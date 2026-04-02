@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로젝트 인력 일정 관리 시스템</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=20260331c">
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="app-sidebar">
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-icon">📋</div>
+            <div>
+                <div class="sidebar-logo-text">PMS</div>
+                <div class="sidebar-logo-sub">인력 일정 관리 시스템</div>
+            </div>
+        </div>
+
+        <div class="sidebar-nav">
+            <div class="sidebar-nav-label">현황</div>
+            <div class="nav-item active" data-view="dashboard">
+                <span class="icon">📊</span> 프로젝트 현황
+            </div>
+            <div class="nav-item" data-view="calendar">
+                <span class="icon">📆</span> 현황 (캘린더)
+            </div>
+            <div class="nav-item" data-view="timeline">
+                <span class="icon">📅</span> 인력현황
+            </div>
+
+            <div class="sidebar-nav-label">관리</div>
+            <div class="nav-item" data-view="projects">
+                <span class="icon">📁</span> 프로젝트 관리
+            </div>
+            <div class="nav-item" data-view="members">
+                <span class="icon">👥</span> 인력 관리
+            </div>
+            <div class="nav-item" data-view="settings">
+                <span class="icon">⚙️</span> 설정
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="nav-item" id="sidebar-logout" style="cursor:pointer">
+                <span class="icon">🚪</span> 로그아웃
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="app-header">
+        <h1 id="header-page-title">프로젝트 현황</h1>
+        <div class="header-right">
+            <div id="header-user-info"></div>
+        </div>
+    </header>
+
+    <!-- Content -->
+    <main class="app-content" id="app-content">
+        <div style="text-align:center;padding:60px">
+            <p class="text-muted">로딩 중...</p>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+    <script src="/static/js/auth.js?v=20260331a"></script>
+    <script src="/static/js/api.js?v=20260324a"></script>
+    <script src="/static/js/components/modal.js?v=20260321"></script>
+    <script src="/static/js/components/toast.js?v=20260321"></script>
+    <script src="/static/js/views/dashboardView.js?v=20260331k"></script>
+    <script src="/static/js/views/calendarView.js?v=20260331a"></script>
+    <script src="/static/js/views/timelineView.js?v=20260324a"></script>
+    <script src="/static/js/views/projectView.js?v=20260402b"></script>
+    <script src="/static/js/views/memberView.js?v=20260324c"></script>
+    <script src="/static/js/views/settingsView.js?v=20260324b"></script>
+    <script src="/static/js/app.js?v=20260331a"></script>
+</body>
+</html>
