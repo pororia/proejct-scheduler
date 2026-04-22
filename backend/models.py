@@ -18,6 +18,17 @@ class Customer(Base):
     projects = relationship("Project", back_populates="customer", cascade="all, delete-orphan")
 
 
+class SalesRep(Base):
+    __tablename__ = "sales_reps"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Text, nullable=False)
+    division_team = Column(Text, nullable=True)  # 사업부>팀명
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    projects = relationship("Project", back_populates="sales_rep_obj")
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -35,7 +46,8 @@ class Project(Base):
     project_url = Column(Text, nullable=True)   # 프로젝트 상세 URL
     document_url = Column(Text, nullable=True)  # 프로젝트 문서 URL
     description = Column(Text, nullable=True)   # HTML 설명
-    sales_rep = Column(Text, nullable=True)     # 담당 영업
+    sales_rep = Column(Text, nullable=True)       # 담당 영업 (레거시 텍스트)
+    sales_rep_id = Column(Integer, ForeignKey("sales_reps.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -43,6 +55,7 @@ class Project(Base):
     tech_stacks = relationship("ProjectTechStack", back_populates="project", cascade="all, delete-orphan")
     assignments = relationship("Assignment", back_populates="project", cascade="all, delete-orphan")
     recurring_schedules = relationship("RecurringSchedule", back_populates="project", cascade="all, delete-orphan")
+    sales_rep_obj = relationship("SalesRep", back_populates="projects")
 
 
 class ProjectTechStack(Base):
@@ -168,3 +181,14 @@ class MasterData(Base):
     __table_args__ = (
         UniqueConstraint("category", "value", name="uq_master_data"),
     )
+
+
+class ReleaseNote(Base):
+    __tablename__ = "release_notes"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    version    = Column(Text, nullable=False)   # "v0.5"
+    title      = Column(Text, nullable=True)    # "기능 개선 및 버그 수정"
+    content    = Column(Text, nullable=True)    # HTML
+    released_at = Column(Text, nullable=True)   # "YYYY-MM-DD"
+    created_at = Column(DateTime, default=datetime.utcnow)

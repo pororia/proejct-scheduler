@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from backend.database import get_db
-from backend.models import Project, ProjectTechStack, Customer, RecurringSchedule, Assignment, AssignmentPeriod
+from backend.models import Project, ProjectTechStack, Customer, RecurringSchedule, Assignment, AssignmentPeriod, SalesRep
 from backend.schemas import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectDetailResponse
 )
@@ -13,6 +13,8 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 def _project_to_response(p: Project) -> dict:
     """Convert project ORM object to response dict."""
+    sr = p.sales_rep_obj
+    sr_division = sr.division_team.split('>')[0].strip() if sr and sr.division_team else None
     return {
         "id": p.id,
         "customer_id": p.customer_id,
@@ -29,6 +31,9 @@ def _project_to_response(p: Project) -> dict:
         "project_url": p.project_url,
         "document_url": p.document_url,
         "description": p.description,
+        "sales_rep_id": p.sales_rep_id,
+        "sales_rep_name": sr.name if sr else None,
+        "sales_rep_division": sr_division,
         "tech_stacks": [{"id": ts.id, "tech_stack": ts.tech_stack} for ts in p.tech_stacks],
         "created_at": p.created_at,
         "updated_at": p.updated_at,
@@ -48,6 +53,7 @@ def list_projects(
     q = db.query(Project).options(
         joinedload(Project.customer),
         joinedload(Project.tech_stacks),
+        joinedload(Project.sales_rep_obj),
     )
     if customer_id:
         q = q.filter(Project.customer_id == customer_id)
@@ -78,6 +84,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     p = db.query(Project).options(
         joinedload(Project.customer),
         joinedload(Project.tech_stacks),
+        joinedload(Project.sales_rep_obj),
         selectinload(Project.assignments).joinedload(Assignment.member),
         selectinload(Project.assignments).selectinload(Assignment.periods),
         selectinload(Project.recurring_schedules),
@@ -136,6 +143,7 @@ def create_project(data: ProjectCreate, db: Session = Depends(get_db)):
         project_url=data.project_url,
         document_url=data.document_url,
         description=data.description,
+        sales_rep_id=data.sales_rep_id,
     )
     db.add(project)
     db.flush()
@@ -147,6 +155,7 @@ def create_project(data: ProjectCreate, db: Session = Depends(get_db)):
         db.query(Project).options(
             joinedload(Project.customer),
             joinedload(Project.tech_stacks),
+            joinedload(Project.sales_rep_obj),
         ).get(project.id)
     )
 
@@ -169,6 +178,7 @@ def update_project(project_id: int, data: ProjectUpdate, db: Session = Depends(g
         db.query(Project).options(
             joinedload(Project.customer),
             joinedload(Project.tech_stacks),
+            joinedload(Project.sales_rep_obj),
         ).get(project_id)
     )
 

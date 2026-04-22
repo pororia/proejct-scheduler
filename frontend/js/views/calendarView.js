@@ -4,10 +4,49 @@
 const CalendarView = {
     currentYear: new Date().getFullYear(),
     currentMonth: new Date().getMonth() + 1,
+    selectedDivision: '',
+    isSummary: false,
 
     _allDivisions: [],
     _allTeams: [],
     _memberMap: {}, // memberId -> {name, division, team}
+
+    toggleSummary() {
+        this.isSummary = !this.isSummary;
+        this.loadData();
+    },
+
+    selectDivision(div) {
+        this.selectedDivision = div;
+        document.querySelectorAll('.cal-division-chip').forEach(btn => {
+            const active = btn.dataset.value === div;
+            btn.style.background  = active ? 'var(--primary)' : 'white';
+            btn.style.color       = active ? 'white' : 'var(--gray-600)';
+            btn.style.borderColor = active ? 'var(--primary)' : 'var(--gray-200)';
+            btn.style.fontWeight  = active ? '600' : '500';
+        });
+        this._refreshTeamFilter(div);
+        this._refreshMemberFilter(div, '');
+        this.loadData();
+    },
+
+    _renderDivisionChips(divisions) {
+        const group = document.getElementById('cal-division-radio-group');
+        if (!group) return;
+        const sel = this.selectedDivision;
+        const allDivs = ['', ...divisions];
+        group.innerHTML = allDivs.map(div => {
+            const active = div === sel;
+            const label  = div || '전체';
+            return `<button class="cal-division-chip" data-value="${div}"
+                onclick="CalendarView.selectDivision('${div}')"
+                style="padding:4px 14px;border-radius:20px;border:1.5px solid;font-size:12px;cursor:pointer;transition:all 0.15s;
+                background:${active ? 'var(--primary)' : 'white'};
+                color:${active ? 'white' : 'var(--gray-600)'};
+                border-color:${active ? 'var(--primary)' : 'var(--gray-200)'};
+                font-weight:${active ? '600' : '500'}">${label}</button>`;
+        }).join('');
+    },
 
     async render() {
         const container = document.getElementById('app-content');
@@ -36,10 +75,6 @@ const CalendarView = {
                         </select>
                     </span>
                     <span style="border-left:1px solid var(--gray-200);margin-left:4px;padding-left:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <label>사업부</label>
-                        <select id="cal-filter-division" class="form-control" style="width:120px">
-                            <option value="">전체</option>
-                        </select>
                         <label>팀</label>
                         <select id="cal-filter-team" class="form-control" style="width:120px">
                             <option value="">전체</option>
@@ -50,6 +85,11 @@ const CalendarView = {
                         </select>
                     </span>
                     <button class="btn btn-sm btn-outline" style="margin-left:auto" onclick="CalendarView.goToday()">오늘</button>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:white;border:1.5px solid var(--gray-100);border-radius:12px;margin-bottom:8px;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--gray-500);white-space:nowrap;min-width:64px">담당 사업부</span>
+                    <div id="cal-division-radio-group" style="display:flex;gap:6px;flex-wrap:wrap"></div>
                 </div>
 
                 <div id="cal-summary" style="display:flex;gap:16px;align-items:center;background:white;border-radius:8px;padding:10px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);font-size:13px;flex-wrap:wrap"></div>
@@ -87,25 +127,17 @@ const CalendarView = {
         const techSel = document.getElementById('cal-filter-tech');
         techStacks.forEach(t => { techSel.innerHTML += `<option value="${t}">${t}</option>`; });
 
-        const divSel = document.getElementById('cal-filter-division');
-        divisions.forEach(d => { divSel.innerHTML += `<option value="${d}">${d}</option>`; });
-
+        // 사업부 칩 렌더링 (master divisions 기준)
+        this._renderDivisionChips(divisions);
         this._refreshTeamFilter('');
         this._refreshMemberFilter('', '');
 
         document.getElementById('cal-filter-confirmed').addEventListener('change', () => this.loadData());
         document.getElementById('cal-filter-status').addEventListener('change', () => this.loadData());
         document.getElementById('cal-filter-tech').addEventListener('change', () => this.loadData());
-        document.getElementById('cal-filter-division').addEventListener('change', () => {
-            const div = document.getElementById('cal-filter-division').value;
-            this._refreshTeamFilter(div);
-            this._refreshMemberFilter(div, '');
-            this.loadData();
-        });
         document.getElementById('cal-filter-team').addEventListener('change', () => {
-            const div = document.getElementById('cal-filter-division').value;
             const team = document.getElementById('cal-filter-team').value;
-            this._refreshMemberFilter(div, team);
+            this._refreshMemberFilter(this.selectedDivision, team);
             this.loadData();
         });
         document.getElementById('cal-filter-member').addEventListener('change', () => this.loadData());
@@ -217,7 +249,7 @@ const CalendarView = {
         const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
         // 클라이언트 사이드 필터 값
-        const filterDiv    = document.getElementById('cal-filter-division')?.value || '';
+        const filterDiv    = this.selectedDivision;
         const filterTeam   = document.getElementById('cal-filter-team')?.value || '';
         const filterMember = document.getElementById('cal-filter-member')?.value || '';
 
@@ -284,18 +316,37 @@ const CalendarView = {
         // summary 바 업데이트
         const summaryEl = document.getElementById('cal-summary');
         if (summaryEl) {
-            const items = [
-                { label: '투입 M/M', value: totalMM > 0 ? totalMM.toFixed(2) : '0.00', unit: 'M/M' },
-                { label: '투입 M/D', value: totalMD > 0 ? Math.round(totalMD) : '0', unit: '일' },
-                { label: '참여 담당자', value: Object.keys(memberMD).length, unit: '명' },
-                { label: '프로젝트', value: projectIds.size, unit: '건' },
-            ];
-            summaryEl.innerHTML = items.map(it => `
-                <div style="display:flex;flex-direction:column;align-items:center;padding:4px 16px;border-right:1px solid var(--gray-200);last-child:border:none">
-                    <span style="font-size:11px;color:var(--gray-500);margin-bottom:2px">${it.label}</span>
-                    <span style="font-size:18px;font-weight:700;color:var(--primary)">${it.value}<span style="font-size:12px;font-weight:400;color:var(--gray-500);margin-left:2px">${it.unit}</span></span>
+            const isSummary = this.isSummary;
+            const summaryBtnStyle = isSummary
+                ? 'background:var(--primary);color:white;border-color:var(--primary)'
+                : 'background:white;color:var(--gray-600);border-color:var(--gray-300)';
+            const summaryBtnLabel = isSummary ? '전체 보기' : '요약 보기';
+            summaryEl.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;padding:4px 16px;border-right:1px solid var(--gray-200)">
+                    <span style="font-size:11px;color:var(--gray-500);margin-bottom:2px">투입 M/M</span>
+                    <span style="font-size:18px;font-weight:700;color:var(--primary)">${totalMM > 0 ? totalMM.toFixed(2) : '0.00'}<span style="font-size:12px;font-weight:400;color:var(--gray-500);margin-left:2px">M/M</span></span>
                 </div>
-            `).join('') + `<span style="font-size:12px;color:var(--gray-400);margin-left:auto">${year}년 ${month}월 기준</span>`;
+                <div style="display:flex;flex-direction:column;align-items:center;padding:4px 16px;border-right:1px solid var(--gray-200)">
+                    <span style="font-size:11px;color:var(--gray-500);margin-bottom:2px">투입 M/D</span>
+                    <span style="font-size:18px;font-weight:700;color:var(--primary)">${totalMD > 0 ? Math.round(totalMD) : '0'}<span style="font-size:12px;font-weight:400;color:var(--gray-500);margin-left:2px">일</span></span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;padding:4px 16px;border-right:1px solid var(--gray-200)">
+                    <span style="font-size:11px;color:var(--gray-500);margin-bottom:2px">참여 담당자</span>
+                    <span style="font-size:18px;font-weight:700;color:var(--primary)">${Object.keys(memberMD).length}<span style="font-size:12px;font-weight:400;color:var(--gray-500);margin-left:2px">명</span></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;padding:4px 16px;border-right:1px solid var(--gray-200)">
+                    <div style="display:flex;flex-direction:column;align-items:center">
+                        <span style="font-size:11px;color:var(--gray-500);margin-bottom:2px">프로젝트</span>
+                        <span style="font-size:18px;font-weight:700;color:var(--primary)">${projectIds.size}<span style="font-size:12px;font-weight:400;color:var(--gray-500);margin-left:2px">건</span></span>
+                    </div>
+                    <button id="cal-summary-btn"
+                        onclick="CalendarView.toggleSummary()"
+                        style="display:none;padding:4px 12px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;${summaryBtnStyle}">
+                        ${summaryBtnLabel}
+                    </button>
+                </div>
+                <span style="font-size:12px;color:var(--gray-400);margin-left:auto">${year}년 ${month}월 기준</span>
+            `;
         }
 
         // 해당 날짜에 활성화된 이벤트인지 확인
@@ -364,9 +415,11 @@ const CalendarView = {
                 pill.style.borderLeftColor = color.border;
                 pill.style.color = color.text;
 
-                const label = `${ev.customerName} · ${ev.projectName} / ${ev.memberName}`;
+                const fullLabel    = `${ev.customerName} · ${ev.projectName} / ${ev.memberName}`;
+                const compactLabel = `${ev.customerName} · ${ev.memberName}`;
+                const label = this.isSummary ? compactLabel : fullLabel;
                 pill.textContent = label;
-                pill.title = label;
+                pill.title = fullLabel;
                 pill.style.cursor = 'pointer';
                 pill.addEventListener('click', () => {
                     App.navigate('projects');
@@ -389,6 +442,18 @@ const CalendarView = {
                 grid.appendChild(blank);
             }
         }
+
+        // 요약 모드 클래스 + 스크롤 감지 → 요약 버튼 표시 제어
+        const wrapper = document.querySelector('.cal-wrapper');
+        if (wrapper) {
+            wrapper.classList.toggle('cal-compact', this.isSummary);
+        }
+        requestAnimationFrame(() => {
+            const btn = document.getElementById('cal-summary-btn');
+            if (!btn || !wrapper) return;
+            const needsScroll = wrapper.scrollWidth > wrapper.clientWidth + 1;
+            btn.style.display = (needsScroll || this.isSummary) ? '' : 'none';
+        });
     },
 
     prevMonth() {

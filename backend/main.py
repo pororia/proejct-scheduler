@@ -9,7 +9,9 @@ from jose import JWTError, jwt
 
 from backend.database import init_db
 from backend.routers import customers, projects, members, assignments, dashboard, master, recurring
+from backend.routers.sales_reps import router as sales_reps_router
 from backend.routers.auth import router as auth_router, SECRET_KEY, ALGORITHM
+from backend.routers.versions import router as versions_router
 
 app = FastAPI(title="Project Scheduler", version="1.0.0")
 
@@ -78,6 +80,8 @@ app.include_router(assignments.router)
 app.include_router(dashboard.router)
 app.include_router(master.router)
 app.include_router(recurring.router)
+app.include_router(sales_reps_router)
+app.include_router(versions_router)
 
 # Static files
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")

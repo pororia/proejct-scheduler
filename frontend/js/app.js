@@ -7,7 +7,9 @@ const VIEW_TITLES = {
     timeline:  '인력현황',
     projects:  '프로젝트 관리',
     members:   '인력 관리',
+    salesreps: '영업 담당자 관리',
     settings:  '설정',
+    admin:     '관리자',
 };
 
 const App = {
@@ -17,6 +19,21 @@ const App = {
         // 인증 확인
         if (!Auth.requireAuth()) return;
         Auth.renderUserInfo();
+
+        // 사이드바 최신 버전 표시
+        API.getVersions().then(versions => {
+            if (versions && versions.length) {
+                const el = document.getElementById('sidebar-version');
+                if (el) el.textContent = `PMS ${versions[0].version}`;
+            }
+        }).catch(() => {});
+
+        // 관리자 전용 메뉴 표시 제어
+        const isAdmin = Auth.isAdmin();
+        ['admin', 'settings'].forEach(view => {
+            const el = document.querySelector(`.nav-item[data-view="${view}"]`);
+            if (el) el.style.display = isAdmin ? '' : 'none';
+        });
 
         // 로그아웃 버튼
         const logoutBtn = document.getElementById('sidebar-logout');
@@ -57,7 +74,15 @@ const App = {
                 case 'timeline':  await TimelineView.render();  break;
                 case 'projects':  await ProjectView.render();   break;
                 case 'members':   await MemberView.render();    break;
-                case 'settings':  await SettingsView.render();  break;
+                case 'salesreps': await SalesRepView.render();  break;
+                case 'settings':
+                    if (!Auth.isAdmin()) { this.navigate('dashboard'); return; }
+                    await SettingsView.render();
+                    break;
+                case 'admin':
+                    if (!Auth.isAdmin()) { this.navigate('dashboard'); return; }
+                    await AdminView.render();
+                    break;
             }
         } catch (e) {
             console.error('View render error:', e);

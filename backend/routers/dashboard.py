@@ -6,7 +6,7 @@ from sqlalchemy import func
 from backend.database import get_db
 from backend.models import (
     Project, Customer, Assignment, Member,
-    MonthlyAllocation, ProjectTechStack, AssignmentPeriod
+    MonthlyAllocation, ProjectTechStack, AssignmentPeriod, SalesRep
 )
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -26,6 +26,7 @@ def project_overview(
         .options(
             joinedload(Project.customer),
             joinedload(Project.tech_stacks),
+            joinedload(Project.sales_rep_obj),
             selectinload(Project.assignments).joinedload(Assignment.member),
             selectinload(Project.assignments).joinedload(Assignment.monthly_allocations),
             selectinload(Project.assignments).selectinload(Assignment.periods),
@@ -73,6 +74,8 @@ def project_overview(
                     for p in sorted(a.periods, key=lambda p: p.start_date)
                 ],
             })
+        sr = p.sales_rep_obj
+        sr_division = sr.division_team.split('>')[0].strip() if sr and sr.division_team else None
         result.append({
             "id": p.id,
             "customer_name": p.customer.name if p.customer else None,
@@ -86,6 +89,9 @@ def project_overview(
             "end_date": str(p.end_date) if p.end_date else None,
             "tech_stacks": [ts.tech_stack for ts in p.tech_stacks],
             "notes": p.notes,
+            "sales_rep_id": p.sales_rep_id,
+            "sales_rep_name": sr.name if sr else (p.sales_rep or None),
+            "sales_rep_division": sr_division,
             "assignments": assignments_data,
         })
     return result

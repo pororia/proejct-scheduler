@@ -93,9 +93,23 @@ const API = {
     createRecurringSchedule(projectId, data) { return this.request('POST', `/projects/${projectId}/recurring-schedules`, data); },
     deleteRecurringSchedule(id) { return this.request('DELETE', `/recurring-schedules/${id}`); },
 
+    // Sales Reps
+    getSalesReps() { return this.request('GET', '/sales-reps'); },
+    getSalesRep(id) { return this.request('GET', `/sales-reps/${id}`); },
+    createSalesRep(data) { return this.request('POST', '/sales-reps', data); },
+    updateSalesRep(id, data) { return this.request('PUT', `/sales-reps/${id}`, data); },
+    deleteSalesRep(id) { return this.request('DELETE', `/sales-reps/${id}`); },
+
     // Auth - User management
     getUsers() { return this.request('GET', '/auth/users'); },
     createUser(data) { return this.request('POST', '/auth/users', data); },
     updateUser(id, data) { return this.request('PUT', `/auth/users/${id}`, data); },
     deleteUser(id) { return this.request('DELETE', `/auth/users/${id}`); },
+
+    // Versions / Release notes
+    getVersions() { return this.request('GET', '/versions'); },
+    getVersion(id) { return this.request('GET', `/versions/${id}`); },
+    createVersion(data) { return this.request('POST', '/versions', data); },
+    updateVersion(id, data) { return this.request('PUT', `/versions/${id}`, data); },
+    deleteVersion(id) { return this.request('DELETE', `/versions/${id}`); },
 };

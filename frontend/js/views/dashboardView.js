@@ -70,9 +70,41 @@ const COL_DEFS = [
 const DashboardView = {
     currentYear: new Date().getFullYear(),
     filters: {},
+    selectedDivision: '',
+    _baseProjects: [],
     hiddenIds: new Set(JSON.parse(localStorage.getItem('db_hidden_projects') || '[]')),
     hiddenCols: new Set(JSON.parse(localStorage.getItem('db_hidden_cols') || '[]')),
     kpiVisible: localStorage.getItem('db_kpi_visible') !== 'false',
+
+    selectDivision(div) {
+        this.selectedDivision = div;
+        document.querySelectorAll('.db-division-chip').forEach(btn => {
+            const active = btn.dataset.value === div;
+            btn.style.background    = active ? 'var(--primary)' : 'white';
+            btn.style.color         = active ? 'white' : 'var(--gray-600)';
+            btn.style.borderColor   = active ? 'var(--primary)' : 'var(--gray-200)';
+            btn.style.fontWeight    = active ? '600' : '500';
+        });
+        this.loadData();
+    },
+
+    _renderDivisionChips(divisions) {
+        const group = document.getElementById('division-radio-group');
+        if (!group) return;
+        const sel = this.selectedDivision;
+        const allDivs = ['', ...divisions];
+        group.innerHTML = allDivs.map(div => {
+            const active = div === sel;
+            const label  = div || '전체';
+            return `<button class="db-division-chip" data-value="${div}"
+                onclick="DashboardView.selectDivision('${div}')"
+                style="padding:4px 14px;border-radius:20px;border:1.5px solid;font-size:12px;cursor:pointer;transition:all 0.15s;
+                background:${active ? 'var(--primary)' : 'white'};
+                color:${active ? 'white' : 'var(--gray-600)'};
+                border-color:${active ? 'var(--primary)' : 'var(--gray-200)'};
+                font-weight:${active ? '600' : '500'}">${label}</button>`;
+        }).join('');
+    },
 
     toggleKpi() {
         this.kpiVisible = !this.kpiVisible;
@@ -216,6 +248,13 @@ const DashboardView = {
                 <select id="filter-status" class="form-control" style="width:120px">
                     <option value="">전체</option>
                 </select>
+                <select id="db-search-field" class="form-control" style="width:110px">
+                    <option value="name">프로젝트명</option>
+                    <option value="customer">고객사</option>
+                    <option value="salesrep">담당 영업</option>
+                    <option value="member">담당자명</option>
+                </select>
+                <input type="text" id="db-search-input" class="form-control" placeholder="검색어 입력..." style="width:180px">
                 <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
                     <button id="kpi-toggle-btn" onclick="DashboardView.toggleKpi()"
                         style="padding:5px 12px;background:white;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
@@ -240,6 +279,10 @@ const DashboardView = {
                     </div>
                 </div>
             </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:white;border:1.5px solid var(--gray-100);border-radius:12px;margin-bottom:8px;flex-wrap:wrap">
+                <span style="font-size:12px;font-weight:600;color:var(--gray-500);white-space:nowrap;min-width:64px">담당 사업부</span>
+                <div id="division-radio-group" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+            </div>
             <div class="overview-wrapper">
                 <table class="overview-table" id="overview-table">
                     <thead id="overview-thead"></thead>
@@ -252,9 +295,10 @@ const DashboardView = {
         document.getElementById('filter-year').value = this.currentYear;
 
         // Load filter options
-        const [techStacks, statuses] = await Promise.all([
+        const [techStacks, statuses, salesReps] = await Promise.all([
             API.getTechStacks(),
             API.getStatuses(),
+            API.getSalesReps(),
         ]);
         const techSelect = document.getElementById('filter-tech');
         techStacks.forEach(t => {
@@ -265,6 +309,14 @@ const DashboardView = {
             statusSelect.innerHTML += `<option value="${s}">${s}</option>`;
         });
 
+        // 사업부 칩 초기 렌더링 (영업 담당자의 division_team 파싱)
+        const divisions = [...new Set(
+            salesReps
+                .map(r => r.division_team ? r.division_team.split('>')[0].trim() : null)
+                .filter(Boolean)
+        )].sort();
+        this._renderDivisionChips(divisions);
+
         // Event listeners
         document.getElementById('filter-year').addEventListener('change', () => this.loadData());
         document.getElementById('filter-month').addEventListener('change', () => this.loadData());
@@ -272,6 +324,8 @@ const DashboardView = {
         document.getElementById('filter-tech').addEventListener('change', () => this.loadData());
         document.getElementById('filter-status').addEventListener('change', () => this.loadData());
         document.getElementById('filter-show-hidden').addEventListener('change', () => this.loadData());
+        document.getElementById('db-search-field').addEventListener('change', () => this._doRender(this.currentYear));
+        document.getElementById('db-search-input').addEventListener('input', () => this._doRender(this.currentYear));
 
         // 패널 외부 클릭 시 닫기
         document.addEventListener('click', (e) => {
@@ -297,11 +351,33 @@ const DashboardView = {
         if (tech) params.tech_stack = tech;
         if (status) params.status = status;
 
-        const [projects, summary] = await Promise.all([
+        let [projects, summary] = await Promise.all([
             API.getProjectOverview(params),
             API.getMonthlySummary(year),
         ]);
 
+        // 사업부 필터 (담당 영업 기준)
+        if (this.selectedDivision) {
+            projects = projects.filter(p => p.sales_rep_division === this.selectedDivision);
+        }
+
+        this._baseProjects = projects;
+        this._doRender(year);
+    },
+
+    _doRender(year) {
+        const field = document.getElementById('db-search-field')?.value || 'name';
+        const text  = (document.getElementById('db-search-input')?.value || '').toLowerCase().trim();
+        let projects = this._baseProjects;
+        if (text) {
+            projects = projects.filter(p => {
+                if (field === 'name')     return (p.name || '').toLowerCase().includes(text);
+                if (field === 'customer') return (p.customer_name || '').toLowerCase().includes(text);
+                if (field === 'salesrep') return (p.sales_rep_name || '').toLowerCase().includes(text);
+                if (field === 'member')   return (p.assignments || []).some(a => (a.member_name || '').toLowerCase().includes(text));
+                return false;
+            });
+        }
         this.renderKPIs(projects, year);
         this.renderTable(projects, year);
     },
@@ -326,8 +402,12 @@ const DashboardView = {
             for (const a of p.assignments) {
                 if (!a.member_id) continue;
                 const periods = a.periods && a.periods.length > 0 ? a.periods : null;
-                for (const [monthKey, alloc] of Object.entries(a.monthly_allocations)) {
-                    if (!alloc || !yearMonthKeys.has(monthKey)) continue;
+                for (const monthKey of yearMonthKeys) {
+                    let alloc = a.monthly_allocations[monthKey] || 0;
+                    if (!alloc && periods && periods.some(p =>
+                        p.start_date.slice(0,7) <= monthKey && monthKey <= p.end_date.slice(0,7)
+                    )) alloc = 1.0;
+                    if (!alloc) continue;
                     const [y, m] = monthKey.split('-').map(Number);
                     let md = 0;
                     if (periods) {
@@ -525,7 +605,10 @@ const DashboardView = {
                     if (!a.member_id) continue;
                     const periods = a.periods && a.periods.length > 0 ? a.periods : null;
                     columns.forEach(c => {
-                        const alloc = a.monthly_allocations[c.key] || 0;
+                        let alloc = a.monthly_allocations[c.key] || 0;
+                        if (!alloc && periods && periods.some(p =>
+                            p.start_date.slice(0,7) <= c.key && c.key <= p.end_date.slice(0,7)
+                        )) alloc = 1.0;
                         if (!alloc) return;
                         let md = 0;
                         if (periods) {
@@ -610,7 +693,10 @@ const DashboardView = {
                         }
                     } else {
                         columns.forEach(c => {
-                            const alloc = a.monthly_allocations[c.key] || 0;
+                            let alloc = a.monthly_allocations[c.key] || 0;
+                            if (!alloc && periods && periods.some(p =>
+                                p.start_date.slice(0,7) <= c.key && c.key <= p.end_date.slice(0,7)
+                            )) alloc = 1.0;
                             if (alloc > 0) {
                                 let md = 0;
                                 if (periods) {
@@ -619,7 +705,7 @@ const DashboardView = {
                                     md = calcMDForMonth(c.year, c.month, alloc, a.start_date, a.end_date);
                                 }
                                 totalMD += md;
-                                displayMM += md / 20;
+                                displayMM += Math.min(1.0, md / 20);
                             }
                         });
                         totalSumMD += totalMD;

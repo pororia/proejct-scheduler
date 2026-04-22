@@ -2,6 +2,16 @@
  * Timeline view - Member monthly allocation overview.
  */
 
+// 토글 가능한 열 정의 (담당자는 항상 표시)
+const TL_COL_DEFS = [
+    { key: 'division', label: '사업부' },
+    { key: 'team',     label: '팀명'   },
+    { key: 'grade',    label: '등급'   },
+    { key: 'skills',   label: '기술영역' },
+    { key: 'mm',       label: 'M/M'   },
+    { key: 'md',       label: 'M/D'   },
+];
+
 /** start ~ end 구간의 평일(월~금) 수 반환 */
 function tlCountWeekdaysInRange(start, end) {
     const s = new Date(start);
@@ -35,6 +45,114 @@ const TimelineView = {
     currentYear: new Date().getFullYear(),
     projectColors: {},
     colorIdx: 0,
+    selectedDivision: '',
+    hiddenCols: new Set(JSON.parse(localStorage.getItem('tl_hidden_cols') || '[]')),
+    _baseMembers: [],
+
+    // sticky 컬럼 순서와 너비 (left 재계산용)
+    _TL_STICKY: [
+        { key: null,       width: 80  }, // 담당자 (항상 표시)
+        { key: 'division', width: 80  },
+        { key: 'team',     width: 80  },
+        { key: 'grade',    width: 50  },
+        { key: 'skills',   width: 100 },
+    ],
+
+    toggleCol(key) {
+        if (this.hiddenCols.has(key)) this.hiddenCols.delete(key);
+        else this.hiddenCols.add(key);
+        localStorage.setItem('tl_hidden_cols', JSON.stringify([...this.hiddenCols]));
+        this._applyColVisibility();
+    },
+
+    resetAllCols() {
+        this.hiddenCols.clear();
+        localStorage.setItem('tl_hidden_cols', '[]');
+        this._applyColVisibility();
+    },
+
+    toggleColPanel() {
+        const panel = document.getElementById('tl-col-panel');
+        if (!panel) return;
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    },
+
+    _recalcStickyLeft() {
+        let left = 0;
+        this._TL_STICKY.forEach(({ key, width }) => {
+            if (key === null || !this.hiddenCols.has(key)) {
+                if (key !== null) {
+                    document.querySelectorAll(`.tl-col-${key}`).forEach(el => {
+                        el.style.left = `${left}px`;
+                    });
+                }
+                left += width;
+            }
+        });
+    },
+
+    _applyColVisibility() {
+        const hiddenCount = this.hiddenCols.size;
+        const badge = document.getElementById('tl-col-hidden-badge');
+        if (badge) {
+            badge.style.display = hiddenCount > 0 ? 'inline' : 'none';
+            badge.textContent   = hiddenCount;
+        }
+
+        TL_COL_DEFS.forEach(({ key }) => {
+            const hidden = this.hiddenCols.has(key);
+            document.querySelectorAll(`.tl-col-${key}`).forEach(el => {
+                el.style.display = hidden ? 'none' : '';
+            });
+        });
+
+        this._recalcStickyLeft();
+
+        const panelItems = document.getElementById('tl-col-panel-items');
+        if (!panelItems) return;
+        panelItems.innerHTML = TL_COL_DEFS.map(({ key, label }) => {
+            const hidden = this.hiddenCols.has(key);
+            return `
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+                    <input type="checkbox" ${hidden ? '' : 'checked'}
+                        style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer"
+                        onchange="TimelineView.toggleCol('${key}')">
+                    <span style="font-size:13px;color:${hidden ? 'var(--gray-400)' : 'var(--gray-700)'};font-weight:${hidden ? '400' : '500'}">${label}</span>
+                    ${hidden ? '<span style="font-size:11px;color:var(--gray-400)">(숨김)</span>' : ''}
+                </label>
+            `;
+        }).join('');
+    },
+
+    selectDivision(div) {
+        this.selectedDivision = div;
+        document.querySelectorAll('.tl-division-chip').forEach(btn => {
+            const active = btn.dataset.value === div;
+            btn.style.background  = active ? 'var(--primary)' : 'white';
+            btn.style.color       = active ? 'white' : 'var(--gray-600)';
+            btn.style.borderColor = active ? 'var(--primary)' : 'var(--gray-200)';
+            btn.style.fontWeight  = active ? '600' : '500';
+        });
+        this.loadData();
+    },
+
+    _renderDivisionChips(divisions) {
+        const group = document.getElementById('tl-division-radio-group');
+        if (!group) return;
+        const sel = this.selectedDivision;
+        const allDivs = ['', ...divisions];
+        group.innerHTML = allDivs.map(div => {
+            const active = div === sel;
+            const label  = div || '전체';
+            return `<button class="tl-division-chip" data-value="${div}"
+                onclick="TimelineView.selectDivision('${div}')"
+                style="padding:4px 14px;border-radius:20px;border:1.5px solid;font-size:12px;cursor:pointer;transition:all 0.15s;
+                background:${active ? 'var(--primary)' : 'white'};
+                color:${active ? 'white' : 'var(--gray-600)'};
+                border-color:${active ? 'var(--primary)' : 'var(--gray-200)'};
+                font-weight:${active ? '600' : '500'}">${label}</button>`;
+        }).join('');
+    },
 
     async render() {
         const container = document.getElementById('app-content');
@@ -66,10 +184,30 @@ const TimelineView = {
                 <select id="tl-filter-team" class="form-control" style="width:120px">
                     <option value="">전체</option>
                 </select>
+                <select id="tl-search-field" class="form-control" style="width:110px">
+                    <option value="member">담당자명</option>
+                    <option value="project">프로젝트명</option>
+                    <option value="customer">고객사</option>
+                </select>
+                <input type="text" id="tl-search-input" class="form-control" placeholder="검색어 입력..." style="width:180px">
+                <div style="margin-left:auto;position:relative">
+                    <button id="tl-col-settings-btn" onclick="TimelineView.toggleColPanel()"
+                        style="display:flex;align-items:center;gap:5px;padding:6px 12px;background:white;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;font-weight:600;color:var(--gray-600);cursor:pointer">
+                        <span>⚙</span> 열 설정
+                        <span id="tl-col-hidden-badge" style="display:none;background:var(--primary);color:white;border-radius:10px;padding:1px 6px;font-size:11px"></span>
+                    </button>
+                    <div id="tl-col-panel" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:white;border:1.5px solid var(--gray-200);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:14px 16px;z-index:50;min-width:180px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                            <span style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">열 표시 설정</span>
+                            <button onclick="TimelineView.resetAllCols()" style="font-size:11px;color:var(--primary);background:none;border:none;cursor:pointer;font-weight:600">전체 표시</button>
+                        </div>
+                        <div id="tl-col-panel-items" style="display:flex;flex-direction:column;gap:6px"></div>
+                    </div>
+                </div>
             </div>
-            <div class="filter-bar" id="tl-division-bar" style="padding-top:0;gap:12px;flex-wrap:wrap">
-                <label style="margin-right:4px">사업부</label>
-                <label><input type="radio" name="tl-division" value=""> 전체</label>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:white;border:1.5px solid var(--gray-100);border-radius:12px;margin-bottom:8px;flex-wrap:wrap">
+                <span style="font-size:12px;font-weight:600;color:var(--gray-500);white-space:nowrap;min-width:64px">담당 사업부</span>
+                <div id="tl-division-radio-group" style="display:flex;gap:6px;flex-wrap:wrap"></div>
             </div>
             <div class="overview-wrapper">
                 <table class="overview-table" id="timeline-table">
@@ -95,20 +233,24 @@ const TimelineView = {
             teamSelect.innerHTML += `<option value="${t.team}">${t.division ? t.division + ' > ' : ''}${t.team}</option>`;
         });
 
-        const divBar = document.getElementById('tl-division-bar');
-        divisions.forEach(d => {
-            const lbl = document.createElement('label');
-            lbl.innerHTML = `<input type="radio" name="tl-division" value="${d}"> ${d}`;
-            divBar.appendChild(lbl);
-        });
-        divBar.querySelector('input[value=""]').checked = true;
+        this._renderDivisionChips(divisions);
 
         document.getElementById('tl-filter-year').addEventListener('change', () => this.loadData());
         document.getElementById('tl-filter-month').addEventListener('change', () => this.loadData());
         document.getElementById('tl-filter-grade').addEventListener('change', () => this.loadData());
         document.getElementById('tl-filter-tech').addEventListener('change', () => this.loadData());
         document.getElementById('tl-filter-team').addEventListener('change', () => this.loadData());
-        divBar.addEventListener('change', () => this.loadData());
+        document.getElementById('tl-search-field').addEventListener('change', () => this._doRender(this.currentYear));
+        document.getElementById('tl-search-input').addEventListener('input', () => this._doRender(this.currentYear));
+
+        // 패널 외부 클릭 시 닫기
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('tl-col-panel');
+            const btn   = document.getElementById('tl-col-settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.style.display = 'none';
+            }
+        });
 
         await this.loadData();
     },
@@ -120,8 +262,7 @@ const TimelineView = {
         const grade    = document.getElementById('tl-filter-grade').value;
         const tech     = document.getElementById('tl-filter-tech').value;
         const team     = document.getElementById('tl-filter-team').value;
-        const divRadio = document.querySelector('input[name="tl-division"]:checked');
-        const division = divRadio ? divRadio.value : '';
+        const division = this.selectedDivision;
 
         if (grade)    params.grade = grade;
         if (tech)     params.tech_stack = tech;
@@ -129,7 +270,25 @@ const TimelineView = {
         if (division) params.division = division;
 
         const members = await API.getMemberOverview(params);
-        this.renderTable(members, year);
+        this._baseMembers = members;
+        this._doRender(year);
+    },
+
+    _doRender(year) {
+        const field = document.getElementById('tl-search-field')?.value || 'member';
+        const text  = (document.getElementById('tl-search-input')?.value || '').toLowerCase().trim();
+        let data = this._baseMembers;
+        if (text) {
+            data = data.filter(d => {
+                if (field === 'member')  return (d.name || '').toLowerCase().includes(text);
+                if (field === 'project') return Object.values(d.monthly_data || {}).flat()
+                    .some(item => (item.project_name || '').toLowerCase().includes(text));
+                if (field === 'customer') return Object.values(d.monthly_data || {}).flat()
+                    .some(item => (item.customer_name || '').toLowerCase().includes(text));
+                return false;
+            });
+        }
+        this.renderTable(data, year);
     },
 
     getProjectColor(projectName) {
@@ -164,12 +323,12 @@ const TimelineView = {
         if (isDaily) {
             thead.innerHTML = `<tr>
                 <th class="fixed-col" style="left:0;min-width:80px">담당자</th>
-                <th class="fixed-col" style="left:80px;min-width:80px">사업부</th>
-                <th class="fixed-col" style="left:160px;min-width:80px">팀명</th>
-                <th class="fixed-col" style="left:240px;min-width:50px">등급</th>
-                <th class="fixed-col" style="left:290px;min-width:100px">기술영역</th>
-                <th style="min-width:55px">M/M</th>
-                <th style="min-width:45px">M/D</th>
+                <th class="fixed-col tl-col-division" style="left:80px;min-width:80px">사업부</th>
+                <th class="fixed-col tl-col-team" style="left:160px;min-width:80px">팀명</th>
+                <th class="fixed-col tl-col-grade" style="left:240px;min-width:50px">등급</th>
+                <th class="fixed-col tl-col-skills" style="left:290px;min-width:100px">기술영역</th>
+                <th class="tl-col-mm" style="min-width:55px">M/M</th>
+                <th class="tl-col-md" style="min-width:45px">M/D</th>
                 ${columns.map(c => `<th class="month-cell${c.isWeekend ? ' weekend-col' : ''}" style="min-width:28px;padding:2px;line-height:1.4">
                     <div style="font-size:12px">${c.day}</div>
                     <div style="font-size:10px;color:${c.dow===0?'#ef4444':c.dow===6?'#3b82f6':'var(--gray-400)'}">${c.dowLabel}</div>
@@ -179,12 +338,12 @@ const TimelineView = {
             thead.innerHTML = `
                 <tr>
                     <th class="fixed-col" style="left:0;min-width:80px" rowspan="2">담당자</th>
-                    <th class="fixed-col" style="left:80px;min-width:80px" rowspan="2">사업부</th>
-                    <th class="fixed-col" style="left:160px;min-width:80px" rowspan="2">팀명</th>
-                    <th class="fixed-col" style="left:240px;min-width:50px" rowspan="2">등급</th>
-                    <th class="fixed-col" style="left:290px;min-width:100px" rowspan="2">기술영역</th>
-                    <th style="min-width:55px" rowspan="2">M/M</th>
-                    <th style="min-width:45px" rowspan="2">M/D</th>
+                    <th class="fixed-col tl-col-division" style="left:80px;min-width:80px" rowspan="2">사업부</th>
+                    <th class="fixed-col tl-col-team" style="left:160px;min-width:80px" rowspan="2">팀명</th>
+                    <th class="fixed-col tl-col-grade" style="left:240px;min-width:50px" rowspan="2">등급</th>
+                    <th class="fixed-col tl-col-skills" style="left:290px;min-width:100px" rowspan="2">기술영역</th>
+                    <th class="tl-col-mm" style="min-width:55px" rowspan="2">M/M</th>
+                    <th class="tl-col-md" style="min-width:45px" rowspan="2">M/D</th>
                     <th class="month-cell" colspan="12">${year}년</th>
                 </tr>
                 <tr>
@@ -257,12 +416,12 @@ const TimelineView = {
 
             rows += '<tr>';
             rows += `<td class="fixed-col text-left" style="left:0;min-width:80px;font-weight:600">${member.name}</td>`;
-            rows += `<td class="fixed-col text-left" style="left:80px;min-width:80px">${member.division || ''}</td>`;
-            rows += `<td class="fixed-col text-left" style="left:160px;min-width:80px">${member.team || ''}</td>`;
-            rows += `<td class="fixed-col" style="left:240px;min-width:50px">${member.grade || ''}</td>`;
-            rows += `<td class="fixed-col text-left" style="left:290px;font-size:11px">${member.skills.join(', ')}</td>`;
-            rows += `<td style="text-align:right">${memberTotalMM > 0 ? memberTotalMM.toFixed(2) : ''}</td>`;
-            rows += `<td style="text-align:right">${memberTotalMD > 0 ? Math.round(memberTotalMD) : ''}</td>`;
+            rows += `<td class="fixed-col text-left tl-col-division" style="left:80px;min-width:80px">${member.division || ''}</td>`;
+            rows += `<td class="fixed-col text-left tl-col-team" style="left:160px;min-width:80px">${member.team || ''}</td>`;
+            rows += `<td class="fixed-col tl-col-grade" style="left:240px;min-width:50px">${member.grade || ''}</td>`;
+            rows += `<td class="fixed-col text-left tl-col-skills" style="left:290px;font-size:11px">${member.skills.join(', ')}</td>`;
+            rows += `<td class="tl-col-mm" style="text-align:right">${memberTotalMM > 0 ? memberTotalMM.toFixed(2) : ''}</td>`;
+            rows += `<td class="tl-col-md" style="text-align:right">${memberTotalMD > 0 ? Math.round(memberTotalMD) : ''}</td>`;
 
             if (isDaily) {
                 const monthKey = `${year}-${String(monthFilter).padStart(2,'0')}`;
@@ -326,9 +485,13 @@ const TimelineView = {
         }
 
         // ── 합계 행 ───────────────────────────────────────────
+        // 숨겨진 sticky 열 수만큼 colspan 조정
+        const stickyHidden = ['division','team','grade','skills'].filter(k => this.hiddenCols.has(k)).length;
+        const stickyColspan = 5 - stickyHidden;
+        const mmmdColspan = (['mm','md'].filter(k => !this.hiddenCols.has(k))).length;
         rows += '<tr class="summary-row">';
-        rows += `<td class="fixed-col" style="left:0" colspan="5"><strong>${isDaily ? '일별 총 투입' : '월별 총 투입'}</strong></td>`;
-        rows += `<td colspan="2"></td>`;
+        rows += `<td class="fixed-col" style="left:0" colspan="${stickyColspan}"><strong>${isDaily ? '일별 총 투입' : '월별 총 투입'}</strong></td>`;
+        if (mmmdColspan > 0) rows += `<td colspan="${mmmdColspan}"></td>`;
         if (isDaily) {
             columns.forEach(col => {
                 if (col.isWeekend) {
@@ -347,5 +510,8 @@ const TimelineView = {
         rows += '</tr>';
 
         tbody.innerHTML = rows;
+
+        // 저장된 열 숨김 상태 적용
+        this._applyColVisibility();
     },
 };

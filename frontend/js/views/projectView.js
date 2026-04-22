@@ -4,6 +4,37 @@
 const ProjectView = {
     customers: [],
     members: [],
+    selectedDivision: '',
+
+    selectDivision(div) {
+        this.selectedDivision = div;
+        document.querySelectorAll('.proj-division-chip').forEach(btn => {
+            const active = btn.dataset.value === div;
+            btn.style.background  = active ? 'var(--primary)' : 'white';
+            btn.style.color       = active ? 'white' : 'var(--gray-600)';
+            btn.style.borderColor = active ? 'var(--primary)' : 'var(--gray-200)';
+            btn.style.fontWeight  = active ? '600' : '500';
+        });
+        this.filterTable();
+    },
+
+    _renderDivisionChips(divisions) {
+        const group = document.getElementById('proj-division-radio-group');
+        if (!group) return;
+        const sel = this.selectedDivision;
+        const allDivs = ['', ...divisions];
+        group.innerHTML = allDivs.map(div => {
+            const active = div === sel;
+            const label  = div || '전체';
+            return `<button class="proj-division-chip" data-value="${div}"
+                onclick="ProjectView.selectDivision('${div}')"
+                style="padding:4px 14px;border-radius:20px;border:1.5px solid;font-size:12px;cursor:pointer;transition:all 0.15s;
+                background:${active ? 'var(--primary)' : 'white'};
+                color:${active ? 'white' : 'var(--gray-600)'};
+                border-color:${active ? 'var(--primary)' : 'var(--gray-200)'};
+                font-weight:${active ? '600' : '500'}">${label}</button>`;
+        }).join('');
+    },
 
     async render() {
         const currentYear = new Date().getFullYear();
@@ -21,18 +52,27 @@ const ProjectView = {
                         <button class="btn btn-primary" onclick="ProjectView.showCreate()">+ 프로젝트 추가</button>
                     </div>
                 </div>
-                <div class="filter-bar" style="border:none;padding:0;margin-bottom:12px">
+                <div class="filter-bar" style="border:none;padding:0;margin-bottom:8px">
                     <select id="proj-filter-year" class="form-control" style="width:110px">
                         <option value="">전체 년도</option>
                         ${yearOptions}
                     </select>
-                    <input type="text" id="proj-search" class="form-control" placeholder="검색..." style="width:200px">
+                    <select id="proj-search-field" class="form-control" style="width:110px">
+                        <option value="name">프로젝트명</option>
+                        <option value="customer">고객사</option>
+                        <option value="salesrep">담당 영업</option>
+                    </select>
+                    <input type="text" id="proj-search-input" class="form-control" placeholder="검색어 입력..." style="width:180px">
                     <select id="proj-filter-status" class="form-control" style="width:120px">
                         <option value="">전체 현황</option>
                     </select>
                     <select id="proj-filter-type" class="form-control" style="width:120px">
                         <option value="">전체 유형</option>
                     </select>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 0;margin-bottom:8px;flex-wrap:wrap;border-top:1px solid var(--gray-100)">
+                    <span style="font-size:12px;font-weight:600;color:var(--gray-500);white-space:nowrap;min-width:64px">담당 사업부</span>
+                    <div id="proj-division-radio-group" style="display:flex;gap:6px;flex-wrap:wrap"></div>
                 </div>
                 <div style="overflow-x:auto">
                     <table class="data-table">
@@ -44,6 +84,7 @@ const ProjectView = {
                                 <th>유형</th>
                                 <th>업무유형</th>
                                 <th>진행현황</th>
+                                <th>담당 영업</th>
                                 <th>기간</th>
                                 <th>규모(억)</th>
                                 <th>구축항목</th>
@@ -64,12 +105,25 @@ const ProjectView = {
         types.forEach(t => typeSel.innerHTML += `<option value="${t}">${t}</option>`);
 
         document.getElementById('proj-filter-year').addEventListener('change', () => this.filterTable());
-        document.getElementById('proj-search').addEventListener('input', () => this.filterTable());
+        document.getElementById('proj-search-field').addEventListener('change', () => this.filterTable());
+        document.getElementById('proj-search-input').addEventListener('input', () => this.filterTable());
         document.getElementById('proj-filter-status').addEventListener('change', () => this.filterTable());
         document.getElementById('proj-filter-type').addEventListener('change', () => this.filterTable());
 
-        this.customers = await API.getCustomers();
-        this.members = await API.getMembers();
+        [this.customers, this.members, this.salesReps] = await Promise.all([
+            API.getCustomers(),
+            API.getMembers(),
+            API.getSalesReps(),
+        ]);
+
+        // 사업부 칩 렌더링 (영업 담당자의 division_team 파싱)
+        const divisions = [...new Set(
+            this.salesReps
+                .map(r => r.division_team ? r.division_team.split('>')[0].trim() : null)
+                .filter(Boolean)
+        )].sort();
+        this._renderDivisionChips(divisions);
+
         await this.loadData();
     },
 
@@ -79,10 +133,11 @@ const ProjectView = {
     },
 
     filterTable() {
-        const year = parseInt(document.getElementById('proj-filter-year').value) || null;
-        const search = document.getElementById('proj-search').value.toLowerCase();
+        const year   = parseInt(document.getElementById('proj-filter-year').value) || null;
+        const field  = document.getElementById('proj-search-field')?.value || 'name';
+        const search = (document.getElementById('proj-search-input')?.value || '').toLowerCase().trim();
         const status = document.getElementById('proj-filter-status').value;
-        const type = document.getElementById('proj-filter-type').value;
+        const type   = document.getElementById('proj-filter-type').value;
         let filtered = this.projects;
         if (year) {
             filtered = filtered.filter(p => {
@@ -93,13 +148,16 @@ const ProjectView = {
             });
         }
         if (search) {
-            filtered = filtered.filter(p =>
-                p.name.toLowerCase().includes(search) ||
-                (p.customer_name || '').toLowerCase().includes(search)
-            );
+            filtered = filtered.filter(p => {
+                if (field === 'name')     return (p.name || '').toLowerCase().includes(search);
+                if (field === 'customer') return (p.customer_name || '').toLowerCase().includes(search);
+                if (field === 'salesrep') return (p.sales_rep_name || '').toLowerCase().includes(search);
+                return false;
+            });
         }
         if (status) filtered = filtered.filter(p => p.status === status);
         if (type) filtered = filtered.filter(p => p.project_type === type);
+        if (this.selectedDivision) filtered = filtered.filter(p => p.sales_rep_division === this.selectedDivision);
         this.filteredProjects = filtered;
         this.renderTable(filtered);
     },
@@ -121,7 +179,7 @@ const ProjectView = {
             '시작일': p.start_date || '',
             '종료일': p.end_date || '',
             '규모(억)': p.budget || '',
-            '담당 영업': p.sales_rep || '',
+            '담당 영업': p.sales_rep_name || '',
             '구축항목': (p.tech_stacks || []).map(ts => ts.tech_stack).join(', '),
             '인력수': p.assignments_count || 0,
         }));
@@ -156,6 +214,7 @@ const ProjectView = {
                     <td>${p.project_type || ''}</td>
                     <td>${p.business_type || ''}</td>
                     <td><span class="badge ${badgeClass}">${p.status || ''}</span></td>
+                    <td>${p.sales_rep_name || ''}</td>
                     <td>${p.start_date || ''} ~ ${p.end_date || ''}</td>
                     <td class="text-right">${p.budget || ''}</td>
                     <td>${(p.tech_stacks || []).map(ts => ts.tech_stack).join(', ')}</td>
@@ -248,7 +307,7 @@ const ProjectView = {
                 </div>
                 <div>
                     <div class="text-muted" style="font-size:11px;margin-bottom:2px">담당 영업</div>
-                    <div style="font-size:14px">${project.sales_rep || '-'}</div>
+                    <div style="font-size:14px">${project.sales_rep_name || '-'}</div>
                 </div>
                 <div style="grid-column:1/-1">
                     <div class="text-muted" style="font-size:11px;margin-bottom:2px">기간</div>
@@ -303,9 +362,10 @@ const ProjectView = {
     async showEdit(id) {
         let project, techStacks, projectTypes, businessTypes, statuses;
         try {
-            [project, [techStacks, projectTypes, businessTypes, statuses]] = await Promise.all([
+            [project, [techStacks, projectTypes, businessTypes, statuses], this.salesReps] = await Promise.all([
                 API.getProject(id),
                 Promise.all([API.getTechStacks(), API.getProjectTypes(), API.getBusinessTypes(), API.getStatuses()]),
+                API.getSalesReps(),
             ]);
         } catch (e) {
             Toast.error('프로젝트 정보를 불러오지 못했습니다: ' + e.message);
@@ -355,7 +415,7 @@ const ProjectView = {
                 </div>
                 <div class="form-group">
                     <label>담당 영업</label>
-                    <input type="text" id="edit-sales-rep" class="form-control" value="${project.sales_rep || ''}" placeholder="담당자 이름">
+                    ${this._salesRepSearchHtml('edit-sales-rep-id', project.sales_rep_id)}
                 </div>
                 <div class="form-group">
                     <label>시작일</label>
@@ -452,6 +512,7 @@ const ProjectView = {
         `;
 
         Modal.show('프로젝트 수정', body, footer);
+        this._setupSalesRepSearch('edit-sales-rep-id');
         // Quill HTML 에디터 초기화
         this._descEditor = new Quill('#edit-description-editor', {
             theme: 'snow',
@@ -481,7 +542,7 @@ const ProjectView = {
             notes: document.getElementById('edit-notes').value || null,
             project_url: document.getElementById('edit-project-url').value || null,
             document_url: document.getElementById('edit-document-url').value || null,
-            sales_rep: document.getElementById('edit-sales-rep').value || null,
+            sales_rep_id: parseInt(document.getElementById('edit-sales-rep-id').value) || null,
             description: (() => {
                 const html = this._descEditor?.root.innerHTML || '';
                 return (html === '<p><br></p>' || !html) ? null : html;
@@ -564,7 +625,7 @@ const ProjectView = {
                 </div>
                 <div class="form-group">
                     <label>담당 영업</label>
-                    <input type="text" id="new-sales-rep" class="form-control" placeholder="담당자 이름">
+                    ${this._salesRepSearchHtml('new-sales-rep-id', null)}
                 </div>
                 <div class="form-group">
                     <label>시작일</label>
@@ -607,6 +668,7 @@ const ProjectView = {
         `;
 
         Modal.show('프로젝트 추가', body, footer);
+        this._setupSalesRepSearch('new-sales-rep-id');
         this._descEditor = new Quill('#new-description-editor', {
             theme: 'snow',
             modules: { toolbar: [
@@ -639,7 +701,7 @@ const ProjectView = {
             notes: document.getElementById('new-notes').value || null,
             project_url: document.getElementById('new-project-url').value || null,
             document_url: document.getElementById('new-document-url').value || null,
-            sales_rep: document.getElementById('new-sales-rep').value || null,
+            sales_rep_id: parseInt(document.getElementById('new-sales-rep-id').value) || null,
             description: (() => {
                 const html = this._descEditor?.root.innerHTML || '';
                 return (html === '<p><br></p>' || !html) ? null : html;
@@ -660,18 +722,13 @@ const ProjectView = {
         const [techStacks, grades] = await Promise.all([API.getTechStacks(), API.getGrades()]);
         this._pendingPeriods = [];
 
-        const memberOptions = this.members.map(m =>
-            `<option value="${m.id}">${m.name} (${m.grade || ''})</option>`
-        ).join('');
-        const techOptions = techStacks.map(t => `<option>${t}</option>`).join('');
+        const techOptions  = techStacks.map(t => `<option>${t}</option>`).join('');
         const gradeOptions = grades.map(g => `<option>${g}</option>`).join('');
 
         const body = `
             <div class="form-group">
                 <label>담당자</label>
-                <select id="assign-member" class="form-control">
-                    <option value="">선택</option>${memberOptions}
-                </select>
+                ${this._memberSearchHtml(null)}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <div class="form-group">
@@ -719,10 +776,177 @@ const ProjectView = {
             <button class="btn btn-primary" onclick="ProjectView.createAssignment(${projectId})">추가</button>
         `;
         Modal.show('인력 배정 추가', body, footer);
+        this._setupMemberSearch();
     },
 
     _editingPeriods: [],
     _pendingPeriods: [],
+
+    // ── 담당 영업 검색형 드롭다운 ────────────────────────────
+    _salesRepLabel(r) {
+        const parts = (r.division_team || '').split('>').map(s => s.trim()).filter(Boolean);
+        const loc = parts.length ? ' - ' + parts.join(' - ') : '';
+        return `${r.name}${loc}`;
+    },
+
+    _salesRepSearchHtml(inputId, preselectedId) {
+        const r = preselectedId ? (this.salesReps || []).find(x => x.id === preselectedId) : null;
+        const displayVal = r ? this._salesRepLabel(r) : '';
+        return `
+            <div style="position:relative">
+                <input type="text" id="${inputId}-search" class="form-control"
+                       placeholder="이름으로 검색..." autocomplete="off"
+                       value="${displayVal.replace(/"/g, '&quot;')}">
+                <input type="hidden" id="${inputId}" value="${preselectedId || ''}">
+                <div id="${inputId}-dropdown"
+                     style="display:none;position:absolute;top:100%;left:0;right:0;
+                            background:white;border:1.5px solid var(--primary);border-radius:8px;
+                            box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:200;
+                            max-height:240px;overflow-y:auto;margin-top:4px"></div>
+            </div>`;
+    },
+
+    _setupSalesRepSearch(inputId) {
+        const searchEl   = document.getElementById(`${inputId}-search`);
+        const hiddenEl   = document.getElementById(inputId);
+        const dropdownEl = document.getElementById(`${inputId}-dropdown`);
+        if (!searchEl || !dropdownEl) return;
+
+        const renderList = (query) => {
+            const q = (query || '').toLowerCase().trim();
+            const list = q
+                ? (this.salesReps || []).filter(r => this._salesRepLabel(r).toLowerCase().includes(q))
+                : (this.salesReps || []);
+            const noneItem = `<div onmousedown="ProjectView._selectSalesRep(0,'${inputId}')"
+                onmouseover="this.style.background='var(--gray-50)'"
+                onmouseout="this.style.background=''"
+                style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);
+                       font-size:13px;color:var(--gray-400)">선택 안 함</div>`;
+            const items = list.map(r => {
+                const parts = (r.division_team || '').split('>').map(s => s.trim()).filter(Boolean);
+                const loc   = parts.join(' - ');
+                return `<div onmousedown="ProjectView._selectSalesRep(${r.id},'${inputId}')"
+                    onmouseover="this.style.background='var(--gray-50)'"
+                    onmouseout="this.style.background=''"
+                    style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);
+                           display:flex;justify-content:space-between;align-items:center;gap:8px">
+                    <span style="font-size:13px;font-weight:500;white-space:nowrap">${r.name}</span>
+                    ${loc ? `<span style="font-size:12px;color:var(--gray-400);text-align:right">${loc}</span>` : ''}
+                </div>`;
+            }).join('');
+            dropdownEl.innerHTML = noneItem + (list.length === 0
+                ? '<div style="padding:10px 12px;font-size:13px;color:var(--gray-400)">검색 결과 없음</div>'
+                : items);
+        };
+
+        searchEl.addEventListener('focus', () => {
+            renderList(searchEl.value);
+            dropdownEl.style.display = 'block';
+        });
+        searchEl.addEventListener('input', () => {
+            hiddenEl.value = '';
+            renderList(searchEl.value);
+            dropdownEl.style.display = 'block';
+        });
+        searchEl.addEventListener('blur', () => {
+            setTimeout(() => { dropdownEl.style.display = 'none'; }, 200);
+        });
+    },
+
+    _selectSalesRep(id, inputId) {
+        const hidden   = document.getElementById(inputId);
+        const search   = document.getElementById(`${inputId}-search`);
+        const dropdown = document.getElementById(`${inputId}-dropdown`);
+        if (id === 0) {
+            if (hidden)   hidden.value  = '';
+            if (search)   search.value  = '';
+        } else {
+            const r = (this.salesReps || []).find(x => x.id === id);
+            if (!r) return;
+            if (hidden)   hidden.value  = id;
+            if (search)   search.value  = this._salesRepLabel(r);
+        }
+        if (dropdown) dropdown.style.display = 'none';
+    },
+
+    // ── 담당자 검색형 드롭다운 ────────────────────────────────
+    _memberLabel(m) {
+        const grade = m.grade ? `(${m.grade})` : '';
+        const parts = [m.division, m.team].filter(Boolean);
+        const loc   = parts.length ? ' - ' + parts.join(' - ') : '';
+        return `${m.name}${grade}${loc}`;
+    },
+
+    _memberSearchHtml(preselectedId) {
+        const m = preselectedId ? this.members.find(x => x.id === preselectedId) : null;
+        const displayVal = m ? this._memberLabel(m) : '';
+        return `
+            <div style="position:relative">
+                <input type="text" id="assign-member-search" class="form-control"
+                       placeholder="이름으로 검색..." autocomplete="off"
+                       value="${displayVal.replace(/"/g, '&quot;')}">
+                <input type="hidden" id="assign-member" value="${preselectedId || ''}">
+                <div id="assign-member-dropdown"
+                     style="display:none;position:absolute;top:100%;left:0;right:0;
+                            background:white;border:1.5px solid var(--primary);border-radius:8px;
+                            box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:200;
+                            max-height:240px;overflow-y:auto;margin-top:4px"></div>
+            </div>`;
+    },
+
+    _setupMemberSearch() {
+        const searchEl   = document.getElementById('assign-member-search');
+        const hiddenEl   = document.getElementById('assign-member');
+        const dropdownEl = document.getElementById('assign-member-dropdown');
+        if (!searchEl || !dropdownEl) return;
+
+        const renderList = (query) => {
+            const q = (query || '').toLowerCase().trim();
+            const list = q
+                ? this.members.filter(m => this._memberLabel(m).toLowerCase().includes(q))
+                : this.members;
+            dropdownEl.innerHTML = list.length === 0
+                ? '<div style="padding:10px 12px;font-size:13px;color:var(--gray-400)">검색 결과 없음</div>'
+                : list.map(m => {
+                    const grade = m.grade ? `(${m.grade})` : '';
+                    const loc   = [m.division, m.team].filter(Boolean).join(' - ');
+                    return `<div onmousedown="ProjectView._selectMember(${m.id})"
+                        onmouseover="this.style.background='var(--gray-50)'"
+                        onmouseout="this.style.background=''"
+                        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);
+                               display:flex;justify-content:space-between;align-items:center;gap:8px">
+                        <span style="font-size:13px;font-weight:500;white-space:nowrap">
+                            ${m.name} <span style="color:var(--gray-500);font-weight:400">${grade}</span>
+                        </span>
+                        ${loc ? `<span style="font-size:12px;color:var(--gray-400);text-align:right">${loc}</span>` : ''}
+                    </div>`;
+                }).join('');
+        };
+
+        searchEl.addEventListener('focus', () => {
+            renderList(searchEl.value);
+            dropdownEl.style.display = 'block';
+        });
+        searchEl.addEventListener('input', () => {
+            hiddenEl.value = '';
+            renderList(searchEl.value);
+            dropdownEl.style.display = 'block';
+        });
+        searchEl.addEventListener('blur', () => {
+            setTimeout(() => { dropdownEl.style.display = 'none'; }, 200);
+        });
+    },
+
+    _selectMember(id) {
+        const m = this.members.find(x => x.id === id);
+        if (!m) return;
+        const hidden   = document.getElementById('assign-member');
+        const search   = document.getElementById('assign-member-search');
+        const dropdown = document.getElementById('assign-member-dropdown');
+        if (hidden)   hidden.value   = id;
+        if (search)   search.value   = this._memberLabel(m);
+        if (dropdown) dropdown.style.display = 'none';
+    },
 
     _periodListHtml(assignId, projectId) {
         if (this._editingPeriods.length === 0) {
@@ -801,10 +1025,7 @@ const ProjectView = {
 
         this._editingPeriods = a.periods ? [...a.periods] : [];
 
-        const memberOptions = this.members.map(m =>
-            `<option value="${m.id}" ${m.id === a.member_id ? 'selected' : ''}>${m.name} (${m.grade || ''})</option>`
-        ).join('');
-        const techOptions = techStacks.map(t =>
+        const techOptions  = techStacks.map(t =>
             `<option ${t === a.tech_stack ? 'selected' : ''}>${t}</option>`
         ).join('');
         const gradeOptions = grades.map(g =>
@@ -814,9 +1035,7 @@ const ProjectView = {
         const body = `
             <div class="form-group">
                 <label>담당자</label>
-                <select id="assign-member" class="form-control">
-                    <option value="">선택</option>${memberOptions}
-                </select>
+                ${this._memberSearchHtml(a.member_id)}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <div class="form-group">
@@ -867,6 +1086,7 @@ const ProjectView = {
             <button class="btn btn-primary" onclick="ProjectView.saveEditAssignment(${assignId}, ${projectId})">저장</button>
         `;
         Modal.show('인력 배정 수정', body, footer);
+        this._setupMemberSearch();
     },
 
     async addPeriodInModal(assignId, projectId) {

@@ -655,14 +655,19 @@ th.weekend-col { color: #ef4444 !important; }
     background: white;
     border-radius: var(--card-radius);
     box-shadow: var(--card-shadow);
-    overflow: hidden;
+    overflow-x: auto;
 }
 .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     border-left: 1px solid var(--gray-100);
     border-top: 1px solid var(--gray-100);
+    min-width: 980px;
 }
+/* 요약 모드: 가로폭 제약 해제 + 셀/이벤트 컴팩트 */
+.cal-compact .cal-grid  { min-width: unset; }
+.cal-compact .cal-day   { min-height: 72px; padding: 4px; }
+.cal-compact .cal-event { font-size: 10px; padding: 1px 5px; line-height: 1.5; }
 .cal-dow {
     padding: 10px 0;
     text-align: center;

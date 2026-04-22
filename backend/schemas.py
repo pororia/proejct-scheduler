@@ -122,6 +122,26 @@ class MemberDetailResponse(MemberResponse):
     assignments: list[AssignmentResponse] = []
 
 
+# --- Sales Rep ---
+class SalesRepBase(BaseModel):
+    name: str
+    division_team: Optional[str] = None
+
+class SalesRepCreate(SalesRepBase):
+    pass
+
+class SalesRepUpdate(BaseModel):
+    name: Optional[str] = None
+    division_team: Optional[str] = None
+
+class SalesRepResponse(SalesRepBase):
+    id: int
+    assigned_customers: list[str] = []
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+
 # --- Project ---
 class ProjectBase(BaseModel):
     customer_id: int
@@ -138,6 +158,7 @@ class ProjectBase(BaseModel):
     document_url: Optional[str] = None
     description: Optional[str] = None
     sales_rep: Optional[str] = None
+    sales_rep_id: Optional[int] = None
 
 class ProjectCreate(ProjectBase):
     tech_stacks: list[str] = []
@@ -157,6 +178,7 @@ class ProjectUpdate(BaseModel):
     document_url: Optional[str] = None
     description: Optional[str] = None
     sales_rep: Optional[str] = None
+    sales_rep_id: Optional[int] = None
     tech_stacks: Optional[list[str]] = None
 
 class ProjectResponse(ProjectBase):

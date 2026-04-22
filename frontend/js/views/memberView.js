@@ -3,6 +3,7 @@
  */
 const MemberView = {
     members: [],
+    selectedDivision: '',
 
     async render() {
         const container = document.getElementById('app-content');
@@ -13,10 +14,13 @@ const MemberView = {
                     <button class="btn btn-primary" onclick="MemberView.showCreate()">+ 인력 추가</button>
                 </div>
                 <div class="filter-bar" style="border:none;padding:0;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                    <input type="text" id="member-search" class="form-control" placeholder="이름 검색..." style="width:160px">
-                    <select id="member-filter-division" class="form-control" style="width:130px">
-                        <option value="">전체 사업부</option>
+                    <select id="mb-search-field" class="form-control" style="width:110px">
+                        <option value="name">이름</option>
+                        <option value="division">사업부</option>
+                        <option value="team">팀명</option>
+                        <option value="skill">업무영역</option>
                     </select>
+                    <input type="text" id="mb-search-input" class="form-control" placeholder="검색어 입력..." style="width:180px">
                     <select id="member-filter-team" class="form-control" style="width:130px">
                         <option value="">전체 팀</option>
                     </select>
@@ -30,6 +34,10 @@ const MemberView = {
                     <select id="member-filter-skill" class="form-control" style="width:140px">
                         <option value="">전체 업무영역</option>
                     </select>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:white;border:1.5px solid var(--gray-100);border-radius:12px;margin-bottom:8px;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--gray-500);white-space:nowrap;min-width:64px">담당 사업부</span>
+                    <div id="mb-division-radio-group" style="display:flex;gap:6px;flex-wrap:wrap"></div>
                 </div>
                 <table class="data-table">
                     <thead>
@@ -47,13 +55,43 @@ const MemberView = {
             </div>
         `;
 
-        document.getElementById('member-search').addEventListener('input', () => this.filterTable());
-        document.getElementById('member-filter-division').addEventListener('change', () => this._onDivisionFilterChange());
+        document.getElementById('mb-search-field').addEventListener('change', () => this.filterTable());
+        document.getElementById('mb-search-input').addEventListener('input', () => this.filterTable());
         document.getElementById('member-filter-team').addEventListener('change', () => this.filterTable());
         document.getElementById('member-filter-grade').addEventListener('change', () => this.filterTable());
         document.getElementById('member-filter-skill').addEventListener('change', () => this.filterTable());
 
         await this.loadData();
+    },
+
+    selectDivision(div) {
+        this.selectedDivision = div;
+        document.querySelectorAll('.mb-division-chip').forEach(btn => {
+            const active = btn.dataset.value === div;
+            btn.style.background  = active ? 'var(--primary)' : 'white';
+            btn.style.color       = active ? 'white' : 'var(--gray-600)';
+            btn.style.borderColor = active ? 'var(--primary)' : 'var(--gray-200)';
+            btn.style.fontWeight  = active ? '600' : '500';
+        });
+        this._refreshTeamFilter(div);
+        this.filterTable();
+    },
+
+    _renderDivisionChips(divisions) {
+        const group = document.getElementById('mb-division-radio-group');
+        if (!group) return;
+        const sel = this.selectedDivision;
+        group.innerHTML = ['', ...divisions].map(div => {
+            const active = div === sel;
+            const label  = div || '전체';
+            return `<button class="mb-division-chip" data-value="${div}"
+                onclick="MemberView.selectDivision('${div}')"
+                style="padding:4px 14px;border-radius:20px;border:1.5px solid;font-size:12px;cursor:pointer;transition:all 0.15s;
+                background:${active ? 'var(--primary)' : 'white'};
+                color:${active ? 'white' : 'var(--gray-600)'};
+                border-color:${active ? 'var(--primary)' : 'var(--gray-200)'};
+                font-weight:${active ? '600' : '500'}">${label}</button>`;
+        }).join('');
     },
 
     async loadData() {
@@ -66,14 +104,10 @@ const MemberView = {
         this.members = members;
         this._allTeams = teams;
 
-        // 사업부 옵션
-        const divSel = document.getElementById('member-filter-division');
-        const curDiv = divSel.value;
-        divSel.innerHTML = '<option value="">전체 사업부</option>' +
-            divisions.map(d => `<option value="${d}" ${d === curDiv ? 'selected' : ''}>${d}</option>`).join('');
+        this._renderDivisionChips(divisions);
 
         // 팀 옵션 (현재 사업부 필터 반영)
-        this._refreshTeamFilter(curDiv);
+        this._refreshTeamFilter(this.selectedDivision);
 
         // 업무영역 옵션
         const skillSel = document.getElementById('member-filter-skill');
@@ -81,12 +115,6 @@ const MemberView = {
         skillSel.innerHTML = '<option value="">전체 업무영역</option>' +
             techStacks.map(t => `<option value="${t}" ${t === curSkill ? 'selected' : ''}>${t}</option>`).join('');
 
-        this.filterTable();
-    },
-
-    _onDivisionFilterChange() {
-        const div = document.getElementById('member-filter-division').value;
-        this._refreshTeamFilter(div);
         this.filterTable();
     },
 
@@ -101,17 +129,25 @@ const MemberView = {
     },
 
     filterTable() {
-        const search   = document.getElementById('member-search').value.toLowerCase();
-        const division = document.getElementById('member-filter-division').value;
-        const team     = document.getElementById('member-filter-team').value;
-        const grade    = document.getElementById('member-filter-grade').value;
-        const skill    = document.getElementById('member-filter-skill').value;
+        const field  = document.getElementById('mb-search-field')?.value || 'name';
+        const search = (document.getElementById('mb-search-input')?.value || '').toLowerCase().trim();
+        const team   = document.getElementById('member-filter-team').value;
+        const grade  = document.getElementById('member-filter-grade').value;
+        const skill  = document.getElementById('member-filter-skill').value;
         let filtered = this.members;
-        if (search)   filtered = filtered.filter(m => m.name.toLowerCase().includes(search));
-        if (division) filtered = filtered.filter(m => m.division === division);
-        if (team)     filtered = filtered.filter(m => m.team === team);
-        if (grade)    filtered = filtered.filter(m => m.grade === grade);
-        if (skill)    filtered = filtered.filter(m => (m.skills || []).some(s => s.tech_stack === skill));
+        if (search) {
+            filtered = filtered.filter(m => {
+                if (field === 'name')     return (m.name || '').toLowerCase().includes(search);
+                if (field === 'division') return (m.division || '').toLowerCase().includes(search);
+                if (field === 'team')     return (m.team || '').toLowerCase().includes(search);
+                if (field === 'skill')    return (m.skills || []).some(s => s.tech_stack.toLowerCase().includes(search));
+                return false;
+            });
+        }
+        if (this.selectedDivision) filtered = filtered.filter(m => m.division === this.selectedDivision);
+        if (team)                 filtered = filtered.filter(m => m.team === team);
+        if (grade)                filtered = filtered.filter(m => m.grade === grade);
+        if (skill)                filtered = filtered.filter(m => (m.skills || []).some(s => s.tech_stack === skill));
         this.renderTable(filtered);
     },
 
