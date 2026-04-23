@@ -20,6 +20,7 @@ def _rep_to_response(rep: SalesRep, db: Session) -> dict:
     return {
         "id": rep.id,
         "name": rep.name,
+        "email": rep.email,
         "division_team": rep.division_team,
         "created_at": rep.created_at,
         "assigned_customers": customers,
@@ -64,7 +65,7 @@ def get_sales_rep(rep_id: int, db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def create_sales_rep(data: SalesRepCreate, db: Session = Depends(get_db)):
-    rep = SalesRep(name=data.name, division_team=data.division_team)
+    rep = SalesRep(name=data.name, email=data.email, division_team=data.division_team)
     db.add(rep)
     db.commit()
     db.refresh(rep)

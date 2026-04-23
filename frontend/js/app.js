@@ -30,10 +30,14 @@ const App = {
 
         // 관리자 전용 메뉴 표시 제어
         const isAdmin = Auth.isAdmin();
-        ['admin', 'settings'].forEach(view => {
-            const el = document.querySelector(`.nav-item[data-view="${view}"]`);
-            if (el) el.style.display = isAdmin ? '' : 'none';
-        });
+        const settingsEl = document.querySelector('.nav-item[data-view="settings"]');
+        if (settingsEl) settingsEl.style.display = isAdmin ? '' : 'none';
+
+        // 비관리자는 admin 메뉴를 "내 계정"으로 표시
+        const adminNavEl = document.querySelector('.nav-item[data-view="admin"]');
+        if (adminNavEl && !isAdmin) {
+            adminNavEl.innerHTML = '<span class="icon">👤</span> 내 계정';
+        }
 
         // 로그아웃 버튼
         const logoutBtn = document.getElementById('sidebar-logout');
@@ -80,7 +84,6 @@ const App = {
                     await SettingsView.render();
                     break;
                 case 'admin':
-                    if (!Auth.isAdmin()) { this.navigate('dashboard'); return; }
                     await AdminView.render();
                     break;
             }

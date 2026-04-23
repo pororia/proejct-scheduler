@@ -9,6 +9,10 @@ const AdminView = {
     _userFormTeams: [],
 
     async render() {
+        if (!Auth.isAdmin()) {
+            await this._renderMyAccount();
+            return;
+        }
         const container = document.getElementById('app-content');
         container.innerHTML = `
             <!-- 사용자 관리 -->
@@ -90,6 +94,81 @@ const AdminView = {
         await Promise.all([this._loadUsers(), this._loadOrg(), this.loadList()]);
     },
 
+    // ── 내 계정 (일반 사용자) ────────────────────────────────────
+
+    async _renderMyAccount() {
+        const container = document.getElementById('app-content');
+        const titleEl   = document.getElementById('header-page-title');
+        if (titleEl) titleEl.textContent = '내 계정';
+
+        const u = Auth.getUser();
+        const ROLE_LABEL = { admin: '관리자', manager: '매니저', user: '일반 사용자' };
+
+        container.innerHTML = `
+            <div class="card" style="max-width:520px">
+                <div class="card-header">
+                    <span class="card-title">내 계정 정보</span>
+                </div>
+                <div style="padding:20px">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+                        <div class="form-group" style="margin:0">
+                            <label>아이디</label>
+                            <input class="form-control" value="${u.username || ''}" disabled style="background:var(--gray-50);color:var(--gray-500)">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label>이름</label>
+                            <input class="form-control" value="${u.name || ''}" disabled style="background:var(--gray-50);color:var(--gray-500)">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label>역할</label>
+                            <input class="form-control" value="${ROLE_LABEL[u.role] || u.role || ''}" disabled style="background:var(--gray-50);color:var(--gray-500)">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label>이메일</label>
+                            <input class="form-control" value="${u.email || '-'}" disabled style="background:var(--gray-50);color:var(--gray-500)">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label>사업부</label>
+                            <input class="form-control" value="${u.division || '-'}" disabled style="background:var(--gray-50);color:var(--gray-500)">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label>팀</label>
+                            <input class="form-control" value="${u.team || '-'}" disabled style="background:var(--gray-50);color:var(--gray-500)">
+                        </div>
+                    </div>
+                    <hr style="margin:4px 0 20px;border:none;border-top:1px solid var(--gray-100)">
+                    <h4 style="font-size:13px;font-weight:600;color:var(--gray-600);margin-bottom:12px">비밀번호 변경</h4>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="form-group" style="margin:0">
+                            <label>새 비밀번호 <span style="color:var(--danger)">*</span></label>
+                            <input type="password" id="my-new-pw" class="form-control" placeholder="새 비밀번호">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label>비밀번호 확인 <span style="color:var(--danger)">*</span></label>
+                            <input type="password" id="my-confirm-pw" class="form-control" placeholder="비밀번호 재입력">
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;text-align:right">
+                        <button class="btn btn-primary" onclick="AdminView.saveMyPassword(${u.id})">비밀번호 변경</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    async saveMyPassword(userId) {
+        const pw  = document.getElementById('my-new-pw')?.value || '';
+        const pw2 = document.getElementById('my-confirm-pw')?.value || '';
+        if (!pw)        { Toast.error('새 비밀번호를 입력하세요.'); return; }
+        if (pw !== pw2) { Toast.error('비밀번호가 일치하지 않습니다.'); return; }
+        try {
+            await API.updateUser(userId, { password: pw });
+            Toast.success('비밀번호가 변경되었습니다.');
+            document.getElementById('my-new-pw').value    = '';
+            document.getElementById('my-confirm-pw').value = '';
+        } catch (e) { Toast.error(e.message); }
+    },
+
     // ── 사용자 관리 ─────────────────────────────────────────────
 
     async _loadUsers() {
@@ -116,6 +195,7 @@ const AdminView = {
                         <th style="width:100px">아이디</th>
                         <th style="width:90px">이름</th>
                         <th style="width:80px">역할</th>
+                        <th>이메일</th>
                         <th>사업부</th>
                         <th>팀</th>
                         <th style="width:120px"></th>
@@ -127,6 +207,7 @@ const AdminView = {
                             <td>${u.username}</td>
                             <td>${u.name}</td>
                             <td>${roleLabel(u.role)}</td>
+                            <td>${u.email ? `<a href="mailto:${u.email}" style="color:var(--primary)">${u.email}</a>` : '<span class="text-muted">-</span>'}</td>
                             <td>${u.division || '<span class="text-muted">-</span>'}</td>
                             <td>${u.team || '<span class="text-muted">-</span>'}</td>
                             <td style="white-space:nowrap">
@@ -185,6 +266,10 @@ const AdminView = {
                     </select>
                 </div>
             </div>
+            <div class="form-group" style="margin:0">
+                <label>이메일</label>
+                <input type="email" id="uf-email" class="form-control" value="${u?.email || ''}" placeholder="example@company.com">
+            </div>
         `;
     },
 
@@ -218,13 +303,14 @@ const AdminView = {
         const name     = document.getElementById('uf-name')?.value.trim() || '';
         const password = document.getElementById('uf-password')?.value || '';
         const role     = document.getElementById('uf-role')?.value || 'user';
+        const email    = document.getElementById('uf-email')?.value.trim() || null;
         const division = document.getElementById('uf-division')?.value || null;
         const team     = document.getElementById('uf-team')?.value || null;
         if (!username) { Toast.error('아이디를 입력하세요.'); return; }
         if (!name)     { Toast.error('이름을 입력하세요.'); return; }
         if (!password) { Toast.error('비밀번호를 입력하세요.'); return; }
         try {
-            await API.createUser({ username, name, password, role, division, team });
+            await API.createUser({ username, name, password, email, role, division, team });
             Toast.success('사용자가 추가되었습니다.');
             Modal.close();
             await this._loadUsers();
@@ -252,10 +338,11 @@ const AdminView = {
         const name     = document.getElementById('uf-name')?.value.trim() || '';
         const password = document.getElementById('uf-password')?.value || '';
         const role     = document.getElementById('uf-role')?.value || 'user';
+        const email    = document.getElementById('uf-email')?.value.trim() || null;
         const division = document.getElementById('uf-division')?.value || null;
         const team     = document.getElementById('uf-team')?.value || null;
         if (!name) { Toast.error('이름을 입력하세요.'); return; }
-        const data = { name, role, division, team };
+        const data = { name, email, role, division, team };
         if (password) data.password = password;
         try {
             await API.updateUser(id, data);

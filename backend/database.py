@@ -70,6 +70,23 @@ def init_db():
         if "division" not in members_cols:
             conn.execute(__import__('sqlalchemy').text("ALTER TABLE members ADD COLUMN division TEXT"))
             conn.commit()
+        if "email" not in members_cols:
+            conn.execute(__import__('sqlalchemy').text("ALTER TABLE members ADD COLUMN email TEXT"))
+            conn.commit()
+
+        users_cols = [row[1] for row in conn.execute(
+            __import__('sqlalchemy').text("PRAGMA table_info(users)")
+        )]
+        if "email" not in users_cols:
+            conn.execute(__import__('sqlalchemy').text("ALTER TABLE users ADD COLUMN email TEXT"))
+            conn.commit()
+
+        sales_reps_cols = [row[1] for row in conn.execute(
+            __import__('sqlalchemy').text("PRAGMA table_info(sales_reps)")
+        )]
+        if "email" not in sales_reps_cols:
+            conn.execute(__import__('sqlalchemy').text("ALTER TABLE sales_reps ADD COLUMN email TEXT"))
+            conn.commit()
 
         projects_cols = [row[1] for row in conn.execute(
             __import__('sqlalchemy').text("PRAGMA table_info(projects)")

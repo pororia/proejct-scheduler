@@ -23,6 +23,7 @@ class SalesRep(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
+    email = Column(Text, nullable=True)
     division_team = Column(Text, nullable=True)  # 사업부>팀명
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -73,6 +74,7 @@ class Member(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
+    email = Column(Text, nullable=True)
     division = Column(Text, nullable=True)
     team = Column(Text, nullable=True)
     years_of_experience = Column(Integer, nullable=True)
@@ -165,6 +167,7 @@ class User(Base):
     username = Column(Text, unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
     name = Column(Text, nullable=False)
+    email = Column(Text, nullable=True)
     division = Column(Text, nullable=True)
     team = Column(Text, nullable=True)
     role = Column(Text, default="user")  # admin, manager, user

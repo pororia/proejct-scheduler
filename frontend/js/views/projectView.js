@@ -38,6 +38,7 @@ const ProjectView = {
 
     async render() {
         const currentYear = new Date().getFullYear();
+        const isAdmin = Auth.isAdmin();
         const yearOptions = Array.from({ length: 8 }, (_, i) => currentYear - 3 + i)
             .map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}년</option>`)
             .join('');
@@ -49,7 +50,7 @@ const ProjectView = {
                     <span class="card-title">프로젝트 관리</span>
                     <div style="display:flex;gap:8px">
                         <button class="btn btn-secondary" onclick="ProjectView.downloadExcel()">↓ 엑셀 다운로드</button>
-                        <button class="btn btn-primary" onclick="ProjectView.showCreate()">+ 프로젝트 추가</button>
+                        ${isAdmin ? `<button class="btn btn-primary" onclick="ProjectView.showCreate()">+ 프로젝트 추가</button>` : ''}
                     </div>
                 </div>
                 <div class="filter-bar" style="border:none;padding:0;margin-bottom:8px">
@@ -350,10 +351,12 @@ const ProjectView = {
             </table>
         `;
 
-        const footer = `
+        const footer = Auth.isAdmin() ? `
             <button class="btn btn-danger" onclick="ProjectView.deleteProject(${id})">삭제</button>
             <button class="btn btn-outline" onclick="Modal.close()">닫기</button>
             <button class="btn btn-primary" onclick="ProjectView.showEdit(${id})">수정</button>
+        ` : `
+            <button class="btn btn-outline" onclick="Modal.close()">닫기</button>
         `;
 
         Modal.show(project.name, body, footer);

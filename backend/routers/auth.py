@@ -38,6 +38,7 @@ def _user_to_dict(u: User) -> dict:
         "id": u.id,
         "username": u.username,
         "name": u.name,
+        "email": u.email,
         "division": u.division,
         "team": u.team,
         "role": u.role,
@@ -63,6 +64,7 @@ class UserCreate(BaseModel):
     username: str
     password: str
     name: str
+    email: Optional[str] = None
     division: Optional[str] = None
     team: Optional[str] = None
     role: str = "user"
@@ -70,6 +72,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[str] = None
     division: Optional[str] = None
     team: Optional[str] = None
     role: Optional[str] = None
@@ -110,6 +113,7 @@ def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db
         username=data.username.strip(),
         password_hash=hash_password(data.password),
         name=data.name.strip(),
+        email=data.email or None,
         division=data.division or None,
         team=data.team or None,
         role=data.role,
@@ -122,21 +126,35 @@ def create_user(data: UserCreate, request: Request, db: Session = Depends(get_db
 
 @router.put("/users/{user_id}")
 def update_user(user_id: int, data: UserUpdate, request: Request, db: Session = Depends(get_db)):
-    """사용자 수정 (admin 전용)."""
-    _require_admin(request)
+    """사용자 수정. 관리자는 모든 필드, 일반 사용자는 자신의 비밀번호만 변경 가능."""
+    current = getattr(request.state, "user", None)
+    if not current:
+        raise HTTPException(401, "인증이 필요합니다.")
+    is_admin = current.get("role") == "admin"
+    is_self  = current.get("id") == user_id
+    if not is_admin and not is_self:
+        raise HTTPException(403, "권한이 없습니다.")
+
     user = db.query(User).get(user_id)
     if not user:
         raise HTTPException(404, "사용자를 찾을 수 없습니다.")
-    if data.name is not None:
-        user.name = data.name.strip()
-    if data.division is not None:
-        user.division = data.division or None
-    if data.team is not None:
-        user.team = data.team or None
-    if data.role is not None:
-        user.role = data.role
+
+    if is_admin:
+        if data.name is not None:
+            user.name = data.name.strip()
+        if data.email is not None:
+            user.email = data.email or None
+        if data.division is not None:
+            user.division = data.division or None
+        if data.team is not None:
+            user.team = data.team or None
+        if data.role is not None:
+            user.role = data.role
+
+    # 관리자/본인 모두 비밀번호 변경 가능
     if data.password:
         user.password_hash = hash_password(data.password)
+
     db.commit()
     return _user_to_dict(user)
 

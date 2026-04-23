@@ -95,6 +95,7 @@ class MemberSkillResponse(MemberSkillItem):
 # --- Member ---
 class MemberBase(BaseModel):
     name: str
+    email: Optional[str] = None
     division: Optional[str] = None
     team: Optional[str] = None
     years_of_experience: Optional[int] = None
@@ -105,6 +106,7 @@ class MemberCreate(MemberBase):
 
 class MemberUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[str] = None
     division: Optional[str] = None
     team: Optional[str] = None
     years_of_experience: Optional[int] = None
@@ -125,6 +127,7 @@ class MemberDetailResponse(MemberResponse):
 # --- Sales Rep ---
 class SalesRepBase(BaseModel):
     name: str
+    email: Optional[str] = None
     division_team: Optional[str] = None
 
 class SalesRepCreate(SalesRepBase):
@@ -132,6 +135,7 @@ class SalesRepCreate(SalesRepBase):
 
 class SalesRepUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[str] = None
     division_team: Optional[str] = None
 
 class SalesRepResponse(SalesRepBase):

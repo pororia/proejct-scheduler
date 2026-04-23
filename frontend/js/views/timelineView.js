@@ -12,33 +12,38 @@ const TL_COL_DEFS = [
     { key: 'md',       label: 'M/D'   },
 ];
 
-/** start ~ end 구간의 평일(월~금) 수 반환 */
-function tlCountWeekdaysInRange(start, end) {
+/** start ~ end 구간의 일 수 반환. includeWeekends=true 이면 주말도 포함 */
+function tlCountWeekdaysInRange(start, end, includeWeekends = false) {
     const s = new Date(start);
     const e = new Date(end);
     s.setHours(0, 0, 0, 0);
     e.setHours(0, 0, 0, 0);
-    // 하루짜리 기간이 주말인 경우 1일로 계산
-    if (s.getTime() === e.getTime() && (s.getDay() === 0 || s.getDay() === 6)) return 1;
+    if (s > e) return 0;
     let count = 0;
     const cur = new Date(s);
     while (cur <= e) {
         const dow = cur.getDay();
-        if (dow !== 0 && dow !== 6) count++;
+        if (includeWeekends || (dow !== 0 && dow !== 6)) count++;
         cur.setDate(cur.getDate() + 1);
     }
     return count;
 }
 
-/** 배정 기간과 해당 월의 교집합 구간에서 평일 수 × 할당률 반환 */
+/** 배정 기간과 해당 월의 교집합 구간에서 일 수 × 할당률 반환.
+ *  원본 투입 기간이 2일 이하인 경우 주말도 포함해서 계산. */
 function tlCalcMDForMonth(year, month, alloc, assignStart, assignEnd) {
     if (!alloc || !assignStart || !assignEnd) return 0;
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd   = new Date(year, month, 0);
-    const s = new Date(assignStart) > monthStart ? new Date(assignStart) : monthStart;
-    const e = new Date(assignEnd)   < monthEnd   ? new Date(assignEnd)   : monthEnd;
+    const origS = new Date(assignStart);
+    const origE = new Date(assignEnd);
+    origS.setHours(0, 0, 0, 0);
+    origE.setHours(0, 0, 0, 0);
+    const origDays = Math.round((origE - origS) / 86400000) + 1;
+    const s = origS > monthStart ? origS : monthStart;
+    const e = origE < monthEnd   ? origE : monthEnd;
     if (s > e) return 0;
-    return alloc * tlCountWeekdaysInRange(s, e);
+    return alloc * tlCountWeekdaysInRange(s, e, origDays <= 2);
 }
 
 const TimelineView = {
@@ -373,7 +378,14 @@ const TimelineView = {
 
         // ── 합계 초기화 ───────────────────────────────────────
         const colSums = {};
-        columns.forEach(c => { colSums[isDaily ? c.dateStr : c.key] = 0; });
+        const colSumsMD = {};
+        const colSumsMM = {};
+        columns.forEach(c => {
+            const k = isDaily ? c.dateStr : c.key;
+            colSums[k] = 0;
+            colSumsMD[k] = 0;
+            colSumsMM[k] = 0;
+        });
 
         // ── 행 렌더링 ─────────────────────────────────────────
         const tbody = document.getElementById('tl-tbody');
@@ -474,6 +486,9 @@ const TimelineView = {
                             } else {
                                 entryMD = tlCalcMDForMonth(m.year, m.month, d.allocation, d.start_date, d.end_date);
                             }
+                            // 월별 총 투입 집계: 프로젝트 건별 M/D → M/M (20일 이상=1.0)
+                            colSumsMD[m.key] += entryMD;
+                            colSumsMM[m.key] += entryMD >= 20 ? 1.0 : (entryMD > 0 ? entryMD / 20 : 0);
                             const mdLabel = entryMD > 0 ? ` | M/D: ${Math.round(entryMD)}일` : '';
                             return `<div class="project-block proj-color-${ci}" title="${d.customer_name} - ${d.project_name}${mdLabel}">${shortName}</div>`;
                         }).join('');
@@ -503,8 +518,16 @@ const TimelineView = {
             });
         } else {
             columns.forEach(m => {
-                const v = colSums[m.key];
-                rows += `<td class="month-cell">${v > 0 ? v.toFixed(1) : ''}</td>`;
+                const md = colSumsMD[m.key] || 0;
+                const mm = colSumsMM[m.key] || 0;
+                if (md <= 0 && mm <= 0) {
+                    rows += `<td class="month-cell"></td>`;
+                } else {
+                    rows += `<td class="month-cell" style="padding:3px 4px;line-height:1.5">
+                        <div style="font-weight:700;font-size:12px;color:var(--primary)">${mm.toFixed(2)}</div>
+                        <div style="font-size:10px;color:var(--gray-500)">${Math.round(md)}일</div>
+                    </td>`;
+                }
             });
         }
         rows += '</tr>';

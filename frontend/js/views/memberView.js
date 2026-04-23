@@ -4,6 +4,7 @@
 const MemberView = {
     members: [],
     selectedDivision: '',
+    _existingUserEmails: new Set(),
 
     async render() {
         const container = document.getElementById('app-content');
@@ -16,6 +17,7 @@ const MemberView = {
                 <div class="filter-bar" style="border:none;padding:0;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                     <select id="mb-search-field" class="form-control" style="width:110px">
                         <option value="name">이름</option>
+                        <option value="email">이메일</option>
                         <option value="division">사업부</option>
                         <option value="team">팀명</option>
                         <option value="skill">업무영역</option>
@@ -43,11 +45,13 @@ const MemberView = {
                     <thead>
                         <tr>
                             <th>이름</th>
+                            <th>이메일</th>
                             <th>사업부</th>
                             <th>팀명</th>
                             <th>등급</th>
                             <th>연차</th>
                             <th>가능 업무 영역</th>
+                            <th style="width:90px"></th>
                         </tr>
                     </thead>
                     <tbody id="member-tbody"></tbody>
@@ -95,14 +99,16 @@ const MemberView = {
     },
 
     async loadData() {
-        const [members, divisions, teams, techStacks] = await Promise.all([
+        const [members, divisions, teams, techStacks, users] = await Promise.all([
             API.getMembers(),
             API.getDivisions().catch(() => []),
             API.getTeams().catch(() => []),
             API.getTechStacks().catch(() => []),
+            API.getUsers().catch(() => []),
         ]);
         this.members = members;
         this._allTeams = teams;
+        this._existingUserEmails = new Set(users.map(u => u.email).filter(Boolean));
 
         this._renderDivisionChips(divisions);
 
@@ -138,6 +144,7 @@ const MemberView = {
         if (search) {
             filtered = filtered.filter(m => {
                 if (field === 'name')     return (m.name || '').toLowerCase().includes(search);
+                if (field === 'email')    return (m.email || '').toLowerCase().includes(search);
                 if (field === 'division') return (m.division || '').toLowerCase().includes(search);
                 if (field === 'team')     return (m.team || '').toLowerCase().includes(search);
                 if (field === 'skill')    return (m.skills || []).some(s => s.tech_stack.toLowerCase().includes(search));
@@ -153,16 +160,37 @@ const MemberView = {
 
     renderTable(members) {
         const tbody = document.getElementById('member-tbody');
-        tbody.innerHTML = members.map(m => `
+        const isAdmin = Auth.isAdmin();
+        tbody.innerHTML = members.map(m => {
+            let accountBtnHtml = '';
+            if (isAdmin) {
+                const hasEmail   = !!m.email;
+                const hasAccount = hasEmail && this._existingUserEmails.has(m.email);
+                const btnDisabled = !hasEmail || hasAccount;
+                const btnTitle = !hasEmail ? '이메일이 없어 계정을 생성할 수 없습니다'
+                               : hasAccount ? '이미 계정이 존재합니다' : '계정 생성';
+                const btnStyle = btnDisabled
+                    ? 'background:var(--gray-100);color:var(--gray-400);border:1px solid var(--gray-200);cursor:not-allowed'
+                    : 'background:var(--primary);color:white;border:none;cursor:pointer';
+                accountBtnHtml = `<button
+                    style="padding:4px 10px;border-radius:6px;font-size:12px;${btnStyle}"
+                    title="${btnTitle}"
+                    ${btnDisabled ? 'disabled' : `onclick="MemberView.createAccountFromMember(${m.id})"`}>
+                    계정생성
+                </button>`;
+            }
+            return `
             <tr onclick="MemberView.showDetail(${m.id})" style="cursor:pointer">
                 <td style="font-weight:600">${m.name}</td>
+                <td>${m.email ? `<a href="mailto:${m.email}" onclick="event.stopPropagation()" style="color:var(--primary)">${m.email}</a>` : ''}</td>
                 <td>${m.division || ''}</td>
                 <td>${m.team || ''}</td>
                 <td><span class="badge ${m.grade === '특급' ? 'badge-red' : m.grade === '고급' ? 'badge-blue' : m.grade === '중급' ? 'badge-green' : 'badge-gray'}">${m.grade || ''}</span></td>
                 <td>${m.years_of_experience || ''}년</td>
                 <td>${(m.skills || []).map(s => s.tech_stack).join(', ')}</td>
-            </tr>
-        `).join('');
+                <td onclick="event.stopPropagation()">${accountBtnHtml}</td>
+            </tr>`;
+        }).join('');
     },
 
     /** teams 배열로 사업부>팀 optgroup select HTML 생성 */
@@ -239,6 +267,10 @@ const MemberView = {
                     <div style="font-size:14px">${member.team || '-'}</div>
                 </div>
                 <div style="grid-column:1/-1">
+                    <div class="text-muted" style="font-size:11px;margin-bottom:2px">이메일</div>
+                    <div style="font-size:14px">${member.email ? `<a href="mailto:${member.email}" style="color:var(--primary)">${member.email}</a>` : '-'}</div>
+                </div>
+                <div style="grid-column:1/-1">
                     <div class="text-muted" style="font-size:11px;margin-bottom:4px">가능 업무 영역</div>
                     <div>${skillsHtml}</div>
                 </div>
@@ -251,10 +283,16 @@ const MemberView = {
             </table>
         `;
 
-        const footer = `
-            <button class="btn btn-danger" onclick="MemberView.deleteMember(${id})">삭제</button>
+        const currentUser = Auth.getUser();
+        const canEdit = Auth.isAdmin() ||
+            (member.email && currentUser?.email && member.email === currentUser.email);
+
+        const footer = canEdit ? `
+            ${Auth.isAdmin() ? `<button class="btn btn-danger" onclick="MemberView.deleteMember(${id})">삭제</button>` : ''}
             <button class="btn btn-outline" onclick="Modal.close()">닫기</button>
             <button class="btn btn-primary" onclick="MemberView.showEdit(${id})">수정</button>
+        ` : `
+            <button class="btn btn-outline" onclick="Modal.close()">닫기</button>
         `;
 
         Modal.show(member.name, body, footer);
@@ -293,6 +331,10 @@ const MemberView = {
                 </div>
             </div>
             <div class="form-group">
+                <label>이메일</label>
+                <input type="email" id="m-edit-email" class="form-control" value="${member.email || ''}" placeholder="example@company.com">
+            </div>
+            <div class="form-group">
                 <label>가능 업무 영역</label>
                 <div class="checkbox-group">
                     ${techStacks.map(ts => {
@@ -318,6 +360,7 @@ const MemberView = {
         const [division, team] = teamVal.includes('|') ? teamVal.split('|', 2) : ['', teamVal];
         const data = {
             name: document.getElementById('m-edit-name').value,
+            email: document.getElementById('m-edit-email').value || null,
             division: division || null,
             team: team || null,
             years_of_experience: parseInt(document.getElementById('m-edit-yoe').value) || null,
@@ -341,6 +384,28 @@ const MemberView = {
             await API.deleteMember(id);
             Toast.success('인력이 삭제되었습니다.');
             Modal.close();
+            await this.loadData();
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    },
+
+    async createAccountFromMember(id) {
+        const m = this.members.find(x => x.id === id);
+        if (!m?.email) { Toast.error('이메일이 없어 계정을 생성할 수 없습니다.'); return; }
+        const username = m.email.split('@')[0];
+        if (!confirm(`'${m.name}' 담당자의 계정을 생성하시겠습니까?\n\n아이디: ${username}\n비밀번호: user1234`)) return;
+        try {
+            await API.createUser({
+                username,
+                name: m.name,
+                email: m.email,
+                password: 'user1234',
+                role: 'user',
+                division: m.division || null,
+                team: m.team || null,
+            });
+            Toast.success(`'${m.name}' 계정이 생성되었습니다. (아이디: ${username})`);
             await this.loadData();
         } catch (e) {
             Toast.error(e.message);
@@ -379,6 +444,10 @@ const MemberView = {
                 </div>
             </div>
             <div class="form-group">
+                <label>이메일</label>
+                <input type="email" id="m-new-email" class="form-control" placeholder="example@company.com">
+            </div>
+            <div class="form-group">
                 <label>가능 업무 영역</label>
                 <div class="checkbox-group">
                     ${techStacks.map(ts => `<label><input type="checkbox" class="m-new-skill" value="${ts}"> ${ts}</label>`).join('')}
@@ -403,6 +472,7 @@ const MemberView = {
         const [division, team] = teamVal.includes('|') ? teamVal.split('|', 2) : ['', teamVal];
         const data = {
             name,
+            email: document.getElementById('m-new-email').value || null,
             division: division || null,
             team: team || null,
             years_of_experience: parseInt(document.getElementById('m-new-yoe').value) || null,

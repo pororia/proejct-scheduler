@@ -7,11 +7,12 @@ const SalesRepView = {
 
     async render() {
         const container = document.getElementById('app-content');
+        const isAdmin = Auth.isAdmin();
         container.innerHTML = `
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">영업 담당자 관리</span>
-                    <button class="btn btn-primary" onclick="SalesRepView.showCreate()">+ 담당자 추가</button>
+                    ${isAdmin ? `<button class="btn btn-primary" onclick="SalesRepView.showCreate()">+ 담당자 추가</button>` : ''}
                 </div>
                 <div class="filter-bar" style="border:none;padding:0;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                     <select id="sr-search-field" class="form-control" style="width:110px">
@@ -71,6 +72,7 @@ const SalesRepView = {
             tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted" style="padding:20px">등록된 영업 담당자가 없습니다.</td></tr>`;
             return;
         }
+        const isAdmin = Auth.isAdmin();
         tbody.innerHTML = reps.map(r => {
             const parts = (r.division_team || '').split('>');
             const division = parts[0] || '';
@@ -85,8 +87,10 @@ const SalesRepView = {
                     <td>${divTeamHtml}</td>
                     <td style="font-size:13px">${customers}</td>
                     <td style="white-space:nowrap" onclick="event.stopPropagation()">
+                        ${isAdmin ? `
                         <button class="btn btn-sm btn-outline" onclick="SalesRepView.showEdit(${r.id})">수정</button>
                         <button class="btn btn-sm btn-danger" onclick="SalesRepView.deleteRep(${r.id}, '${r.name.replace(/'/g, "\\'")}')">삭제</button>
+                        ` : ''}
                     </td>
                 </tr>
             `;
@@ -101,8 +105,8 @@ const SalesRepView = {
             return `<option value="${val}" ${selected}>${label}</option>`;
         }).join('');
 
-        const nameVal = rep ? rep.name : '';
-        const id = rep ? `id="${rep.id}"` : '';
+        const nameVal  = rep ? rep.name : '';
+        const emailVal = rep ? (rep.email || '') : '';
         return `
             <div class="form-group">
                 <label>담당자명 <span style="color:var(--danger)">*</span></label>
@@ -114,6 +118,10 @@ const SalesRepView = {
                     <option value="">선택 안 함</option>
                     ${teamOptions}
                 </select>
+            </div>
+            <div class="form-group">
+                <label>이메일</label>
+                <input type="email" id="sr-email" class="form-control" value="${emailVal}" placeholder="example@company.com">
             </div>
         `;
     },
@@ -152,6 +160,10 @@ const SalesRepView = {
                     <div class="text-muted" style="font-size:11px;margin-bottom:2px">사업부 / 팀</div>
                     <div style="font-size:14px">${divTeamText}</div>
                 </div>
+                <div style="grid-column:1/-1">
+                    <div class="text-muted" style="font-size:11px;margin-bottom:2px">이메일</div>
+                    <div style="font-size:14px">${rep.email ? `<a href="mailto:${rep.email}" style="color:var(--primary)">${rep.email}</a>` : '-'}</div>
+                </div>
             </div>
 
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -167,10 +179,12 @@ const SalesRepView = {
             <div id="sr-detail-table"></div>
         `;
 
-        const footer = `
+        const footer = Auth.isAdmin() ? `
             <button class="btn btn-danger" onclick="SalesRepView.deleteRep(${rep.id}, '${rep.name.replace(/'/g, "\\'")}')">삭제</button>
             <button class="btn btn-outline" onclick="Modal.close()">닫기</button>
             <button class="btn btn-primary" onclick="SalesRepView.showEdit(${rep.id})">수정</button>
+        ` : `
+            <button class="btn btn-outline" onclick="Modal.close()">닫기</button>
         `;
 
         // 현재 열린 담당자 데이터 캐시
@@ -274,8 +288,9 @@ const SalesRepView = {
         const name = document.getElementById('sr-name').value.trim();
         if (!name) { Toast.error('담당자명을 입력하세요.'); return; }
         const division_team = document.getElementById('sr-team').value || null;
+        const email = document.getElementById('sr-email').value || null;
         try {
-            await API.createSalesRep({ name, division_team });
+            await API.createSalesRep({ name, email, division_team });
             Toast.success('영업 담당자가 등록되었습니다.');
             Modal.close();
             await this.loadData();
@@ -288,8 +303,9 @@ const SalesRepView = {
         const name = document.getElementById('sr-name').value.trim();
         if (!name) { Toast.error('담당자명을 입력하세요.'); return; }
         const division_team = document.getElementById('sr-team').value || null;
+        const email = document.getElementById('sr-email').value || null;
         try {
-            await API.updateSalesRep(id, { name, division_team });
+            await API.updateSalesRep(id, { name, email, division_team });
             Toast.success('저장되었습니다.');
             Modal.close();
             await this.loadData();

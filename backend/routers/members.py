@@ -13,6 +13,7 @@ def _member_to_response(m: Member) -> dict:
     return {
         "id": m.id,
         "name": m.name,
+        "email": m.email,
         "division": m.division,
         "team": m.team,
         "years_of_experience": m.years_of_experience,
@@ -84,7 +85,7 @@ def get_member_schedule(member_id: int, year: Optional[int] = None, db: Session 
 
 @router.post("", status_code=201)
 def create_member(data: MemberCreate, db: Session = Depends(get_db)):
-    member = Member(name=data.name, division=data.division, team=data.team, years_of_experience=data.years_of_experience, grade=data.grade)
+    member = Member(name=data.name, email=data.email, division=data.division, team=data.team, years_of_experience=data.years_of_experience, grade=data.grade)
     db.add(member)
     db.flush()
     for skill in data.skills:
